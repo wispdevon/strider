@@ -93,8 +93,8 @@ export default function ProjectBoard() {
       >
         <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
           <div>
-            <p className="text-[var(--accent)] text-xs uppercase tracking-widest font-bold">Project Workspaces</p>
-            <h1 className="text-[var(--foreground)] text-3xl font-bold mt-1">Strider Flow</h1>
+            <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">Project Workspaces</p>
+            <h1 className="hero-title text-[var(--foreground)] text-3xl md:text-4xl mt-1">Strider Flow</h1>
           </div>
 
           <motion.button
@@ -209,7 +209,7 @@ export default function ProjectBoard() {
                 transition={{ delay: 0.1 + stageIndex * 0.05 }}
               >
                 <div className="sticky top-32">
-                  <h2 className="text-[var(--foreground)] font-bold mb-3 flex justify-between items-center">
+                  <h2 className="section-heading text-[var(--foreground)] text-lg mb-3 flex justify-between items-center">
                     <span>{stage.label}</span>
                     <motion.span
                       initial={{ scale: 0 }}

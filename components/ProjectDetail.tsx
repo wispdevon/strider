@@ -83,8 +83,8 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
           {/* Title Section */}
           <div className="flex justify-between items-start mb-6">
             <div className="flex-1">
-              <p className="text-[var(--accent)] text-xs font-semibold uppercase tracking-wider">{project.category}</p>
-              <h1 className="text-[var(--foreground)] text-4xl font-bold mt-2">{project.title}</h1>
+              <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">{project.category}</p>
+              <h1 className="hero-title text-[var(--foreground)] text-4xl md:text-5xl mt-2">{project.title}</h1>
               <p className="text-[var(--muted)] mt-3 text-lg">{project.note}</p>
             </div>
           </div>
@@ -142,7 +142,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
             transition={{ delay: 0.3 }}
             className="mb-8"
           >
-            <h2 className="text-[var(--foreground)] text-xl font-bold mb-4">Subtasks</h2>
+            <h2 className="section-heading text-[var(--foreground)] text-xl mb-4">Subtasks</h2>
             <motion.div
               layout
               className="space-y-2"

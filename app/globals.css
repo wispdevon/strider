@@ -1,8 +1,25 @@
 @import "tailwindcss";
 
+/*
+  Design system notes:
+  - Calm, editorial workspace aesthetic inspired by Apple and Notion.
+  - Background uses a muted paper-like tone with a subtle dotted texture.
+  - UI surfaces are soft, rounded, and lightly elevated with restrained shadows.
+  - Accent color is a dark neutral/titanium tone, with subtle high-contrast emphasis inspired by Nothing phone hardware styling.
+  - Typography uses a polished system sans stack for a clean, premium feel.
+*/
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #efece6;
+  --foreground: #17181b;
+  --panel: #f8f6f2;
+  --panel-strong: #e7e0d5;
+  --border: rgba(23, 24, 27, 0.12);
+  --muted: #6e7379;
+  --accent: #1d1f23;
+  --accent-soft: #ece7de;
+  --accent-sheen: #b8b4ab;
+  --accent-glow: rgba(29, 31, 35, 0.08);
 }
 
 @theme inline {
@@ -12,15 +29,29 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  margin: 0;
+  background-color: var(--background);
+  background-image:
+    radial-gradient(circle, rgba(23, 24, 27, 0.09) 1.2px, transparent 1.2px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.02));
+  background-size: 18px 18px, cover;
+  background-position: center;
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-body {
-  background: var(--background);
+h1, h2, h3, h4, h5, h6, p, button, input, select, textarea {
+  font-family: inherit;
+}
+
+::selection {
+  background: rgba(29, 31, 35, 0.16);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
 }

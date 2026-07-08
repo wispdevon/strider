@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Design Direction
+
+The current visual direction is documented in [DESIGN.md](DESIGN.md). It captures the calm paper-like background, muted titanium-grey palette, Nothing-inspired accent treatment, and the Apple/Notion-inspired typography system used across the experience.
+
 ## Getting Started
 
 First, run the development server:

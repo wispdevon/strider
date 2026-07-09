@@ -44,11 +44,116 @@ components/
 └── SegmentedProgress.tsx # Progress bar showing subtask completion
 
 lib/
-├── db.ts                 # Database layer - all types, schema, CRUD functions
+├── types.ts              # All TypeScript interfaces (Subtask, Project, Board, User, etc.)
+├── db-core.ts            # Database connection, schema, helper functions
+├── users.ts              # User and passkey credential functions
+├── boards.ts             # Board CRUD functions
+├── projects.ts           # Project CRUD functions
+├── db.ts                 # Re-exports everything (backward compatible)
 └── useProjects.ts        # React hook for project data fetching
 ```
 
 ## Database Schema & Types
+
+### Types (lib/types.ts)
+```typescript
+export interface Subtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export interface Project {
+  id: string;
+  slug: string;
+  title: string;
+  note: string;
+  stage: 'idea' | 'planning' | 'active' | 'review' | 'done';
+  category: string;
+  subtasks: Subtask[];
+  boardId: string;
+}
+
+export interface Board {
+  id: string;
+  name: string;
+  slug: string;
+  joinCode: string;
+  passwordHash: string | null;
+  authorPin: string;
+  ownerId: string | null;
+  createdAt: string;
+}
+
+export interface BoardWithProjects extends Board {
+  projects: Project[];
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: string;
+}
+
+export interface PasskeyCredential {
+  id: string;
+  userId: string;
+  credentialId: string;
+  publicKey: string;
+  counter: number;
+  deviceType: string;
+  backedUp: boolean;
+  transports: string | null;
+  createdAt: string;
+}
+```
+
+### Database Functions by Module
+
+**lib/db-core.ts** - Core utilities
+```typescript
+getDb(): SqliteDatabase
+generateCode(length?: number): string
+generatePin(): string
+hashPassword(password: string): string
+```
+
+**lib/users.ts** - User & Passkey functions
+```typescript
+createUser(name: string, email?: string): User
+getUserById(id: string): User | null
+savePasskeyCredential(input): PasskeyCredential
+getPasskeyByCredentialId(credentialId: string): PasskeyCredential | null
+updatePasskeyCounter(credentialId: string, counter: number): void
+getPasskeysByUserId(userId: string): PasskeyCredential[]
+```
+
+**lib/boards.ts** - Board CRUD functions
+```typescript
+getAllBoards(): Board[]
+getBoardsByOwnerId(ownerId: string): Board[]
+getBoardBySlug(slug: string): BoardWithProjects | null
+getBoardByJoinCode(joinCode: string): Board | null
+createBoard(input: { name, password?, ownerId? }): Board & { authorPin }
+updateBoard(id: string, updates: { name?, password? }): Board | null
+verifyBoardPassword(joinCode: string, password: string): boolean
+verifyAuthorPin(boardId: string, pin: string): boolean
+deleteBoard(boardId: string, pin: string): boolean
+```
+
+**lib/projects.ts** - Project CRUD functions
+```typescript
+getProjectsByBoardId(boardId: string): Project[]
+getAllProjects(): Project[]
+createProject(input: { title, note, stage, subtasks, category, boardId }): Project
+updateProject(id: string, updates: Partial<Project>): Project | null
+toggleSubtask(projectId: string, subtaskId: string): Project | null
+deleteProject(id: string): void
+deleteSubtask(projectId: string, subtaskId: string): Project | null
+```
+
+**lib/db.ts** - Re-exports all functions for backward compatibility (use this for imports, or import from specific modules)
 
 ### Core Types (from lib/db.ts)
 ```typescript

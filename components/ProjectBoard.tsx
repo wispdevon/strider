@@ -1,25 +1,24 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import ProjectCard from './ProjectCard';
-import { Project, useProjects } from '@/lib/useProjects';
+import { useProjects } from '@/lib/useProjects';
 import { useState } from 'react';
 
 const STAGES = [
-  { key: 'idea', label: 'Idea' },
-  { key: 'planning', label: 'Planning' },
+  { key: 'planning', label: 'Plan' },
   { key: 'active', label: 'Active' },
-  { key: 'review', label: 'Review' },
-  { key: 'done', label: 'Done' }
+  { key: 'review', label: 'Review' }
 ];
 
 export default function ProjectBoard() {
-  const { projects, isLoaded, updateProject, deleteProject, getProjectProgress } = useProjects();
+  const { projects, isLoaded, addProject, updateProject, deleteProject, getProjectProgress } = useProjects();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     note: '',
-    stage: 'idea' as const,
+    stage: 'planning' as const,
     subtasks: '',
     category: ''
   });
@@ -58,8 +57,6 @@ export default function ProjectBoard() {
     e.preventDefault();
     if (!formData.title.trim()) return;
     
-    // Re-export addProject from useProjects and use it
-    const { addProject } = useProjects();
     const subtasks = formData.subtasks
       .split(',')
       .map((s) => s.trim())
@@ -70,17 +67,21 @@ export default function ProjectBoard() {
     setFormData({
       title: '',
       note: '',
-      stage: 'idea',
+      stage: 'planning',
       subtasks: '',
       category: ''
     });
     setShowForm(false);
   };
 
+  // Filter out done projects for the main board
+  const activeProjects = projects.filter((p) => p.stage !== 'done');
+  const doneCount = projects.filter((p) => p.stage === 'done').length;
+
   const summary = {
-    total: projects.length,
-    inMotion: projects.filter((p) => p.stage !== 'done' && p.stage !== 'idea').length,
-    needsAttention: projects.filter((p) => getProjectProgress(p) < 50 && p.stage !== 'done').length
+    total: activeProjects.length,
+    inMotion: activeProjects.filter((p) => p.stage === 'active' || p.stage === 'review').length,
+    needsAttention: activeProjects.filter((p) => getProjectProgress(p) < 50).length
   };
 
   return (
@@ -97,18 +98,29 @@ export default function ProjectBoard() {
             <h1 className="hero-title text-[var(--foreground)] text-3xl md:text-4xl mt-1">Strider Flow</h1>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setShowForm(!showForm)}
-            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-              showForm
-                ? 'bg-[var(--accent)] text-white border border-[var(--accent)] shadow-[0_8px_20px_rgba(29,31,35,0.16)]'
-                : 'bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)]'
-            }`}
-          >
-            + New project
-          </motion.button>
+          <div className="flex items-center gap-3">
+            {doneCount > 0 && (
+              <Link
+                href="/hall-of-fame"
+                className="px-4 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)] transition-all duration-300"
+              >
+                🏆 Hall of Fame ({doneCount})
+              </Link>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowForm(!showForm)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                showForm
+                  ? 'bg-[var(--accent)] text-white border border-[var(--accent)] shadow-[0_8px_20px_rgba(29,31,35,0.16)]'
+                  : 'bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)]'
+              }`}
+            >
+              + New project
+            </motion.button>
+          </div>
         </div>
       </motion.header>
 
@@ -197,9 +209,9 @@ export default function ProjectBoard() {
 
       {/* Board */}
       <div className="max-w-full mx-auto px-6 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {STAGES.map((stage, stageIndex) => {
-            const stageProjects = projects.filter((p) => p.stage === stage.key);
+            const stageProjects = activeProjects.filter((p) => p.stage === stage.key);
 
             return (
               <motion.div

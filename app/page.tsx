@@ -1,5 +1,5 @@
-import ProjectBoard from '@/components/ProjectBoard';
+import BoardManager from '@/components/BoardManager';
 
 export default function Home() {
-  return <ProjectBoard />;
+  return <BoardManager />;
 }

@@ -16,6 +16,7 @@ export interface Project {
   stage: 'idea' | 'planning' | 'active' | 'review' | 'done';
   category: string;
   subtasks: Subtask[];
+  boardId?: string;
 }
 
 export function useProjects() {
@@ -51,11 +52,11 @@ export function useProjects() {
     };
   }, []);
 
-  const addProject = async (title: string, note: string, stage: Project['stage'], subtasks: string[], category: string) => {
+  const addProject = async (title: string, note: string, stage: Project['stage'], subtasks: string[], category: string, boardId?: string) => {
     const response = await fetch('/api/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, note, stage, subtasks, category })
+      body: JSON.stringify({ title, note, stage, subtasks, category, boardId })
     });
 
     if (!response.ok) throw new Error('Failed to create project');

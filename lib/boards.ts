@@ -3,7 +3,7 @@
  */
 
 import { getDb, generateCode, generatePin, hashPassword } from './db-core';
-import type { Board, BoardWithProjects, BoardRow, Project, ProjectRow } from './types';
+import type { Board, BoardWithProjects, BoardRow, Project, ProjectRow, BoardMember, BoardMemberRow } from './types';
 
 // Board functions
 export function getAllBoards(): Board[] {
@@ -18,6 +18,7 @@ export function getAllBoards(): Board[] {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   }));
 }
@@ -34,6 +35,7 @@ export function getBoardsByOwnerId(ownerId: string): Board[] {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   }));
 }
@@ -52,6 +54,7 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   };
 
@@ -85,6 +88,7 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   };
 }
@@ -93,7 +97,7 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
  * Create a board. Internal use for seeding accepts optional fixed id/joinCode/authorPin.
  */
 export function createBoard(
-  input: { name: string; password?: string; ownerId?: string },
+  input: { name: string; password?: string; ownerId?: string; passkeyRequired?: boolean },
   id?: string,
   joinCode?: string,
   authorPin?: string
@@ -105,10 +109,11 @@ export function createBoard(
   const finalAuthorPin = authorPin || generatePin();
   const passwordHash = input.password ? hashPassword(input.password) : null;
   const slugWithSuffix = `${slug}-${Date.now().toString(36)}`;
+  const passkeyRequired = input.passkeyRequired ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO boards (id, name, slug, join_code, password_hash, author_pin, owner_id)
-    VALUES (@id, @name, @slug, @joinCode, @passwordHash, @authorPin, @ownerId)
+    INSERT INTO boards (id, name, slug, join_code, password_hash, author_pin, owner_id, passkey_required)
+    VALUES (@id, @name, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @passkeyRequired)
   `).run({
     id: finalId,
     name: input.name,
@@ -116,7 +121,8 @@ export function createBoard(
     joinCode: finalJoinCode,
     passwordHash,
     authorPin: finalAuthorPin,
-    ownerId: input.ownerId || null
+    ownerId: input.ownerId || null,
+    passkeyRequired
   });
 
   return {
@@ -127,6 +133,7 @@ export function createBoard(
     passwordHash,
     authorPin: finalAuthorPin,
     ownerId: input.ownerId || null,
+    passkeyRequired: input.passkeyRequired || false,
     createdAt: new Date().toISOString()
   };
 }
@@ -134,6 +141,7 @@ export function createBoard(
 export function updateBoard(id: string, updates: {
   name?: string;
   password?: string | null;
+  passkeyRequired?: boolean;
 }): Board | null {
   const current = getBoardBySlug(id) || getAllBoards().find(b => b.id === id);
   if (!current) return null;
@@ -145,21 +153,26 @@ export function updateBoard(id: string, updates: {
     : updates.password 
       ? hashPassword(updates.password) 
       : current.passwordHash;
+  const newPasskeyRequired = updates.passkeyRequired !== undefined 
+    ? (updates.passkeyRequired ? 1 : 0) 
+    : (current.passkeyRequired ? 1 : 0);
 
   db.prepare(`
     UPDATE boards
-    SET name = @name, password_hash = @passwordHash
+    SET name = @name, password_hash = @passwordHash, passkey_required = @passkeyRequired
     WHERE id = @id
   `).run({
     id,
     name: newName,
-    passwordHash: newPasswordHash
+    passwordHash: newPasswordHash,
+    passkeyRequired: newPasskeyRequired
   });
 
   return {
     ...current,
     name: newName,
-    passwordHash: newPasswordHash
+    passwordHash: newPasswordHash,
+    passkeyRequired: newPasskeyRequired === 1
   };
 }
 
@@ -182,6 +195,51 @@ export function deleteBoard(boardId: string, pin: string): boolean {
   
   const db = getDb();
   db.prepare('DELETE FROM projects WHERE board_id = ?').run(boardId);
+  db.prepare('DELETE FROM board_members WHERE board_id = ?').run(boardId);
   db.prepare('DELETE FROM boards WHERE id = ?').run(boardId);
   return true;
+}
+
+// Board member functions
+export function addBoardMember(boardId: string, userId: string, role: 'owner' | 'editor' | 'viewer' = 'editor'): BoardMember {
+  const db = getDb();
+  const id = `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  
+  db.prepare(`
+    INSERT OR REPLACE INTO board_members (id, board_id, user_id, role)
+    VALUES (@id, @boardId, @userId, @role)
+  `).run({ id, boardId, userId, role });
+
+  return {
+    id,
+    boardId,
+    userId,
+    role,
+    joinedAt: new Date().toISOString()
+  };
+}
+
+export function getBoardMembers(boardId: string): BoardMember[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM board_members WHERE board_id = ?').all(boardId) as BoardMemberRow[];
+  
+  return rows.map((row) => ({
+    id: row.id,
+    boardId: row.board_id,
+    userId: row.user_id,
+    role: row.role as 'owner' | 'editor' | 'viewer',
+    joinedAt: row.joined_at
+  }));
+}
+
+export function removeBoardMember(boardId: string, userId: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM board_members WHERE board_id = ? AND user_id = ?').run(boardId, userId);
+  return result.changes > 0;
+}
+
+export function isBoardMember(boardId: string, userId: string): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?').get(boardId, userId);
+  return !!row;
 }

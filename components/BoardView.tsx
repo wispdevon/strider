@@ -5,6 +5,8 @@ import Link from 'next/link';
 import ProjectCard from './ProjectCard';
 import { Project, useProjects } from '@/lib/useProjects';
 import { useState, useEffect } from 'react';
+import UserMenu from './UserMenu';
+import BoardSettings from './BoardSettings';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -16,13 +18,26 @@ interface BoardViewProps {
   boardSlug: string;
 }
 
+interface BoardMember {
+  id: string;
+  boardId: string;
+  userId: string;
+  role: 'owner' | 'editor' | 'viewer';
+  name: string;
+  avatar: string | null;
+  joinedAt: string;
+}
+
 interface BoardInfo {
   id: string;
   name: string;
   slug: string;
   joinCode: string;
   hasPassword: boolean;
+  passkeyRequired?: boolean;
+  isOwner?: boolean;
   projects: Project[];
+  members?: BoardMember[];
 }
 
 export default function BoardView({ boardSlug }: BoardViewProps) {
@@ -183,6 +198,47 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Member Avatars */}
+            {board.members && board.members.length > 0 && (
+              <div className="flex -space-x-2">
+                {board.members.slice(0, 5).map((member) => (
+                  <div
+                    key={member.id}
+                    className="relative group"
+                    title={`${member.name} (${member.role})`}
+                  >
+                    {member.avatar ? (
+                      <img
+                        src={member.avatar}
+                        alt={member.name}
+                        className="w-8 h-8 rounded-full border-2 border-[var(--panel)] shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-[var(--accent)]/20 border-2 border-[var(--panel)] flex items-center justify-center text-xs font-bold text-[var(--accent)]">
+                        {member.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {member.role === 'owner' && (
+                      <span className="absolute -top-1 -right-1 text-xs">👑</span>
+                    )}
+                  </div>
+                ))}
+                {board.members.length > 5 && (
+                  <div className="w-8 h-8 rounded-full bg-[var(--panel-strong)] border-2 border-[var(--panel)] flex items-center justify-center text-xs font-medium text-[var(--muted)]">
+                    +{board.members.length - 5}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <UserMenu />
+            {board && (
+              <BoardSettings
+                boardId={board.id}
+                boardName={board.name}
+                isOwner={board.isOwner || false}
+              />
+            )}
             {doneCount > 0 && (
               <Link
                 href={`/board/${board.slug}/hall-of-fame`}

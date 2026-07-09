@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/context/auth-context";
+import GlobalHeader from "@/components/GlobalHeader";
 
 const inter = Inter({
   variable: "--font-body",
@@ -36,7 +38,12 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${spaceGrotesk.variable} ${codeFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>
+          <GlobalHeader />
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   );
 }

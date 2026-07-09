@@ -27,6 +27,7 @@ export interface Board {
   passwordHash: string | null;
   authorPin: string;
   ownerId: string | null;
+  passkeyRequired: boolean;
   createdAt: string;
 }
 
@@ -62,6 +63,7 @@ export interface BoardRow {
   password_hash: string | null;
   author_pin: string;
   owner_id: string | null;
+  passkey_required: number;
   created_at: string;
 }
 
@@ -92,5 +94,72 @@ export interface PasskeyRow {
   device_type: string;
   backed_up: number;
   transports: string | null;
+  created_at: string;
+}
+
+export interface Session {
+  id: string;
+  userId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface BoardMember {
+  id: string;
+  boardId: string;
+  userId: string;
+  role: 'owner' | 'editor' | 'viewer';
+  joinedAt: string;
+}
+
+export interface Friendship {
+  id: string;
+  userId: string;
+  friendId: string;
+  status: 'pending' | 'accepted' | 'blocked';
+  createdAt: string;
+}
+
+export interface BoardInvite {
+  id: string;
+  boardId: string;
+  fromUserId: string;
+  toUserId: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+}
+
+// Database row types (snake_case from SQLite)
+export interface SessionRow {
+  id: string;
+  user_id: string;
+  token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface BoardMemberRow {
+  id: string;
+  board_id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface FriendshipRow {
+  id: string;
+  user_id: string;
+  friend_id: string;
+  status: string;
+  created_at: string;
+}
+
+export interface BoardInviteRow {
+  id: string;
+  board_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: string;
   created_at: string;
 }

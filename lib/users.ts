@@ -74,7 +74,7 @@ export function savePasskeyCredential(input: {
 
 export function getPasskeyByCredentialId(credentialId: string): PasskeyCredential | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM passkey_credentials WHERE credential_id = ?').get(credentialId) as PasskeyRow | undefined;
+  const row = db.prepare("SELECT * FROM passkey_credentials WHERE credential_id = ? AND device_type NOT IN ('challenge', 'auth-challenge')").get(credentialId) as PasskeyRow | undefined;
 
   if (!row) return null;
 
@@ -98,7 +98,7 @@ export function updatePasskeyCounter(credentialId: string, counter: number): voi
 
 export function getPasskeysByUserId(userId: string): PasskeyCredential[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM passkey_credentials WHERE user_id = ?').all(userId) as PasskeyRow[];
+  const rows = db.prepare("SELECT * FROM passkey_credentials WHERE user_id = ? AND device_type NOT IN ('challenge', 'auth-challenge')").all(userId) as PasskeyRow[];
 
   return rows.map((row) => ({
     id: row.id,

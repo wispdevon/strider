@@ -83,6 +83,71 @@ function initializeDb() {
     );
   `);
 
+  // Temporary WebAuthn challenges table (no foreign key - stores ephemeral challenge data)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      challenge TEXT NOT NULL,
+      options_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Clean up any stale challenges older than 1 hour
+  db.exec(`DELETE FROM webauthn_challenges WHERE created_at < datetime('now', '-1 hour')`);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_members (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'editor',
+      joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(board_id, user_id)
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS friendships (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      friend_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, friend_id)
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_invites (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL,
+      from_user_id TEXT NOT NULL,
+      to_user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+      FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
@@ -92,10 +157,21 @@ function initializeDb() {
       password_hash TEXT,
       author_pin TEXT NOT NULL,
       owner_id TEXT,
+      passkey_required INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
+
+  // Add passkey_required column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'passkey_required')) {
+      db.exec(`ALTER TABLE boards ADD COLUMN passkey_required INTEGER NOT NULL DEFAULT 0`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects (

@@ -3,6 +3,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import UserMenu from './UserMenu';
+import FriendsList from './FriendsList';
+import { useAuth } from '@/context/auth-context';
 
 interface Board {
   id: string;
@@ -10,6 +13,8 @@ interface Board {
   slug: string;
   joinCode: string;
   hasPassword: boolean;
+  passkeyRequired?: boolean;
+  isOwner?: boolean;
   createdAt: string;
 }
 
@@ -18,6 +23,7 @@ interface CreatedBoard extends Board {
 }
 
 export default function BoardManager() {
+  const { authenticated } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -27,7 +33,8 @@ export default function BoardManager() {
   
   const [createForm, setCreateForm] = useState({
     name: '',
-    password: ''
+    password: '',
+    passkeyRequired: false
   });
   
   const [joinForm, setJoinForm] = useState({
@@ -63,16 +70,20 @@ export default function BoardManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: createForm.name,
-          password: createForm.password || undefined
+          password: createForm.password || undefined,
+          passkeyRequired: createForm.passkeyRequired
         })
       });
 
       if (response.ok) {
         const board = await response.json();
         setCreatedBoard(board);
-        setCreateForm({ name: '', password: '' });
+        setCreateForm({ name: '', password: '', passkeyRequired: false });
         setShowCreateForm(false);
         loadBoards();
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to create board');
       }
     } catch (error) {
       console.error('Failed to create board:', error);
@@ -100,7 +111,11 @@ export default function BoardManager() {
       if (response.ok) {
         window.location.href = `/board/${data.slug}`;
       } else {
-        setJoinError(data.error || 'Failed to join board');
+        if (data.requiresPasskey) {
+          setJoinError('This board requires passkey authentication. Please sign in first.');
+        } else {
+          setJoinError(data.error || 'Failed to join board');
+        }
       }
     } catch (error) {
       setJoinError('Failed to join board');
@@ -136,6 +151,8 @@ export default function BoardManager() {
           </div>
 
           <div className="flex items-center gap-3">
+            <UserMenu />
+            <FriendsList />
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -191,6 +208,12 @@ export default function BoardManager() {
                   <p className="text-2xl font-mono font-bold text-yellow-800">{createdBoard.authorPin}</p>
                   <p className="text-xs text-yellow-700 mt-1">Required to delete this board. Keep it safe!</p>
                 </div>
+
+                {createdBoard.passkeyRequired && (
+                  <div className="p-3 rounded-lg bg-purple-50 border border-purple-200">
+                    <p className="text-sm text-purple-700">🔑 Passkey-protected — only authenticated users can access this board</p>
+                  </div>
+                )}
 
                 {createdBoard.hasPassword && (
                   <div className="p-3 rounded-lg bg-green-50 border border-green-200">
@@ -253,6 +276,21 @@ export default function BoardManager() {
                   Create Board
                 </motion.button>
               </div>
+              
+              {/* Passkey Required Checkbox - only show when authenticated */}
+              {authenticated && (
+                <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={createForm.passkeyRequired}
+                    onChange={(e) => setCreateForm({ ...createForm, passkeyRequired: e.target.checked })}
+                    className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                  />
+                  <span className="text-sm text-[var(--foreground)]">
+                    🔑 Passkey-protected (requires authentication to view)
+                  </span>
+                </label>
+              )}
             </form>
           </motion.div>
         )}
@@ -332,11 +370,23 @@ export default function BoardManager() {
                       >
                         <div className="flex justify-between items-start mb-3">
                           <span className="text-2xl">📋</span>
-                          {board.hasPassword && (
-                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
-                              🔒 Protected
-                            </span>
-                          )}
+                          <div className="flex gap-1">
+                            {board.passkeyRequired && (
+                              <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                🔑 Passkey
+                              </span>
+                            )}
+                            {board.hasPassword && (
+                              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                                🔒 Protected
+                              </span>
+                            )}
+                            {board.isOwner && (
+                              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                                👑 Owner
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">{board.name}</h3>
                         <p className="text-sm text-[var(--muted)] font-mono">Code: {board.joinCode}</p>

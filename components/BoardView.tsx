@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 import UserMenu from './UserMenu';
 import InviteFriendsModal from './InviteFriendsModal';
 import BoardIcon from './BoardIcon';
+import { withVirtualAssignees } from '@/lib/virtual-assignees';
 
 type BoardStage = 'planning' | 'active' | 'review';
 type ProjectStage = Project['stage'];
@@ -519,6 +520,10 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     void loadFriends();
   };
 
+  const assignableMembers = board
+    ? withVirtualAssignees((board.members ?? []) as BoardMemberInfo[])
+    : [];
+
   return (
     <div className="min-h-screen bg-transparent">
       {/* Header */}
@@ -972,7 +977,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                                   progress={getProjectProgress(project)}
                                   onMove={(direction) => handleMoveProject(project.id, direction)}
                                   onDelete={() => handleDeleteProject(project.id)}
-                                  members={board.members as BoardMemberInfo[] | undefined}
+                                  members={assignableMembers as BoardMemberInfo[]}
                                   onAssignProject={(userId) => handleAssignProject(project.id, userId)}
                                   boardId={board.id}
                                   isCompleting={completingProjectIds.has(project.id)}
@@ -1012,7 +1017,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     progress={getProjectProgress(activeProject)}
                     onMove={() => {}}
                     onDelete={() => {}}
-                    members={board.members as BoardMemberInfo[] | undefined}
+                    members={assignableMembers as BoardMemberInfo[]}
                     onAssignProject={undefined}
                     boardId={board.id}
                     disableLayoutAnimation

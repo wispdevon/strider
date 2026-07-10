@@ -25,6 +25,7 @@ import { useEffect, useState } from 'react';
 import AssigneeSelector from './AssigneeSelector';
 import FriendsList from './FriendsList';
 import UserMenu from './UserMenu';
+import { withVirtualAssignees } from '@/lib/virtual-assignees';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -233,13 +234,13 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
             setBoard({ id: data.id, name: data.name, slug: data.slug });
           }
           if (data?.members) {
-            setMembers(data.members.map((m) => ({
+            setMembers(withVirtualAssignees(data.members.map((m) => ({
               id: m.id,
               userId: m.userId,
               name: m.name,
               avatar: m.avatar,
               role: m.role
-            })));
+            }))) as BoardMemberInfo[]);
           }
         })
         .catch(() => {});

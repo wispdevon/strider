@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
+import { VIRTUAL_ASSIGNEES } from './virtual-assignees';
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
@@ -112,6 +113,18 @@ function initializeDb() {
     }
   } catch {
     // Column might already exist, ignore
+  }
+
+  // Seed system assignees so agent task assignments satisfy project foreign keys.
+  for (const assignee of VIRTUAL_ASSIGNEES) {
+    db.prepare(`
+      INSERT OR IGNORE INTO users (id, name, email, friend_code)
+      VALUES (@id, @name, NULL, @friendCode)
+    `).run({
+      id: assignee.userId,
+      name: assignee.name,
+      friendCode: `AGENT-${assignee.name.toUpperCase()}`,
+    });
   }
 
   // Passkey credentials table

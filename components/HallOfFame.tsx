@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Project, useProjects } from '@/lib/useProjects';
+import { CLAUDE_ASSIGNEE_ID, CODEX_ASSIGNEE_ID, VIRTUAL_ASSIGNEES, withVirtualAssignees } from '@/lib/virtual-assignees';
 
 interface HallOfFameProps {
   boardSlug?: string;
@@ -37,21 +38,18 @@ interface TimelineAssignee {
   avatar: string | null;
 }
 
-const OPENAI_ICON_URL = 'https://svgl.app/library/openai.svg';
-const CLAUDE_ICON_URL = 'https://svgl.app/library/claude-ai-icon.svg';
-
 const FALLBACK_LEADERS: Record<number, CompletionLeader> = {
   2: {
-    userId: 'fallback-openai-codex',
+    userId: CODEX_ASSIGNEE_ID,
     name: 'Codex',
-    avatar: OPENAI_ICON_URL,
+    avatar: VIRTUAL_ASSIGNEES.find((member) => member.userId === CODEX_ASSIGNEE_ID)?.avatar ?? null,
     completedTasks: 0,
     completedSubtasks: 0,
   },
   3: {
-    userId: 'fallback-claude',
+    userId: CLAUDE_ASSIGNEE_ID,
     name: 'Claude',
-    avatar: CLAUDE_ICON_URL,
+    avatar: VIRTUAL_ASSIGNEES.find((member) => member.userId === CLAUDE_ASSIGNEE_ID)?.avatar ?? null,
     completedTasks: 0,
     completedSubtasks: 0,
   },
@@ -106,7 +104,8 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
   const doneProjects = sourceProjects
     .filter((p) => p.stage === 'done')
     .sort((a, b) => (a.completedAt || '').localeCompare(b.completedAt || ''));
-  const memberLookup = new Map((board?.members ?? []).map((member) => [member.userId, member]));
+  const assignableMembers = withVirtualAssignees(board?.members ?? []);
+  const memberLookup = new Map(assignableMembers.map((member) => [member.userId, member]));
   const userStats = Array.from(
     doneProjects.reduce((stats, project) => {
       if (project.assigneeId) {

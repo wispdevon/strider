@@ -25,6 +25,41 @@ interface CreatedBoard extends Board {
   authorPin: string;
 }
 
+const JOINED_BOARDS_STORAGE_KEY = 'strider-joined-boards';
+const STORAGE_PERSIST_PROMPT_KEY = 'strider-storage-persist-prompted';
+
+function rememberJoinedBoard(board: Board) {
+  if (typeof window === 'undefined') return;
+
+  const existingBoards = JSON.parse(
+    window.localStorage.getItem(JOINED_BOARDS_STORAGE_KEY) || '[]'
+  ) as Board[];
+  const nextBoards = [
+    board,
+    ...existingBoards.filter((existingBoard) => existingBoard.id !== board.id),
+  ];
+
+  window.localStorage.setItem(JOINED_BOARDS_STORAGE_KEY, JSON.stringify(nextBoards));
+}
+
+async function requestPersistentBoardStorage() {
+  if (typeof window === 'undefined' || !navigator.storage?.persist) return;
+  if (window.localStorage.getItem(STORAGE_PERSIST_PROMPT_KEY) === 'true') return;
+
+  const alreadyPersisted = await navigator.storage.persisted?.();
+  if (alreadyPersisted) {
+    window.localStorage.setItem(STORAGE_PERSIST_PROMPT_KEY, 'true');
+    return;
+  }
+
+  const shouldPersist = window.confirm('Save joined boards on this device so they stay available after browser storage cleanup?');
+  window.localStorage.setItem(STORAGE_PERSIST_PROMPT_KEY, 'true');
+
+  if (shouldPersist) {
+    await navigator.storage.persist();
+  }
+}
+
 export default function BoardManager() {
   const { authenticated } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
@@ -33,6 +68,7 @@ export default function BoardManager() {
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [createdBoard, setCreatedBoard] = useState<CreatedBoard | null>(null);
   const [joinError, setJoinError] = useState('');
+  const [copiedBoardId, setCopiedBoardId] = useState<string | null>(null);
   
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -44,10 +80,6 @@ export default function BoardManager() {
     joinCode: '',
     password: ''
   });
-
-  useEffect(() => {
-    loadBoards();
-  }, []);
 
   const loadBoards = async () => {
     try {
@@ -62,6 +94,34 @@ export default function BoardManager() {
       setIsLoaded(true);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInitialBoards = async () => {
+      try {
+        const response = await fetch('/api/boards');
+        if (response.ok) {
+          const data = await response.json();
+          if (!cancelled) {
+            setBoards(data);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load boards:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoaded(true);
+        }
+      }
+    };
+
+    void loadInitialBoards();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleCreateBoard = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +172,8 @@ export default function BoardManager() {
       const data = await response.json();
 
       if (response.ok) {
+        rememberJoinedBoard(data);
+        await requestPersistentBoardStorage();
         window.location.href = `/board/${data.slug}`;
       } else {
         if (data.requiresPasskey) {
@@ -120,8 +182,20 @@ export default function BoardManager() {
           setJoinError(data.error || 'Failed to join board');
         }
       }
-    } catch (error) {
+    } catch {
       setJoinError('Failed to join board');
+    }
+  };
+
+  const handleCopyJoinCode = async (boardId: string, joinCode: string) => {
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCopiedBoardId(boardId);
+      window.setTimeout(() => {
+        setCopiedBoardId((currentBoardId) => currentBoardId === boardId ? null : currentBoardId);
+      }, 1200);
+    } catch (error) {
+      console.error('Failed to copy join code:', error);
     }
   };
 
@@ -372,11 +446,17 @@ export default function BoardManager() {
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={{ delay: index * 0.05 }}
                   >
-                    <Link href={`/board/${board.slug}`}>
-                      <motion.div
-                        whileHover={{ scale: 1.02, y: -2 }}
-                        className="rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
-                      >
+                    <motion.div
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      className="relative rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
+                    >
+                      <Link
+                        href={`/board/${board.slug}`}
+                        aria-label={`Open ${board.name}`}
+                        className="absolute inset-0 z-0 rounded-xl"
+                      />
+
+                      <div className="relative z-10 pointer-events-none">
                         <div className="flex justify-between items-start mb-3">
                           <BoardIcon
                             emoji={board.emoji}
@@ -391,7 +471,7 @@ export default function BoardManager() {
                               </span>
                             )}
                             {board.hasPassword && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                              <span className="text-xs px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)]">
                                 🔒 Protected
                               </span>
                             )}
@@ -403,9 +483,23 @@ export default function BoardManager() {
                           </div>
                         </div>
                         <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">{board.name}</h3>
-                        <p className="text-sm text-[var(--muted)] font-mono">Code: {board.joinCode}</p>
-                      </motion.div>
-                    </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyJoinCode(board.id, board.joinCode)}
+                          className="group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
+                          aria-label={`Copy join code ${board.joinCode}`}
+                          title="Copy code"
+                        >
+                          Code:{' '}
+                          <span className="ml-1 select-none rounded-md bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_50%,rgba(255,255,255,0.04)_50%),linear-gradient(0deg,rgba(29,31,35,0.16)_50%,rgba(255,255,255,0.05)_50%)] bg-[length:7px_7px] px-1.5 text-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.035)] transition duration-150 group-hover/code:select-text group-hover/code:bg-none group-hover/code:px-0 group-hover/code:text-[var(--accent)] group-hover/code:shadow-none group-focus/code:select-text group-focus/code:bg-none group-focus/code:px-0 group-focus/code:text-[var(--accent)] group-focus/code:shadow-none">
+                            {board.joinCode}
+                          </span>
+                          {copiedBoardId === board.id && (
+                            <span className="ml-2 text-[var(--accent)]">Copied</span>
+                          )}
+                        </button>
+                      </div>
+                    </motion.div>
                   </motion.div>
                 ))}
               </AnimatePresence>

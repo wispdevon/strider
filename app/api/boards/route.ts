@@ -49,13 +49,14 @@ export async function GET() {
     }
     boards = Array.from(boardMap.values());
   } else {
-    // Not authenticated: show only public boards (no passkeyRequired)
-    boards = getAllBoards().filter(b => !b.passkeyRequired);
+    // Not authenticated: show only genuinely public boards.
+    boards = getAllBoards().filter(b => !b.ownerId && !b.passkeyRequired && !b.passwordHash);
   }
   
   // Don't expose sensitive data like authorPin or passwordHash
   const safeBoards = boards.map(({ authorPin, passwordHash, ...rest }) => ({
     ...rest,
+    joinCode: session?.userId ? rest.joinCode : undefined,
     hasPassword: !!passwordHash,
   }));
   return NextResponse.json(safeBoards);
@@ -63,24 +64,36 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
     const { name, password, passkeyRequired } = body;
 
-    if (!name) {
+    if (typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Board name is required' }, { status: 400 });
+    }
+    if (name.length > 120) {
+      return NextResponse.json({ error: 'Board name is too long' }, { status: 400 });
+    }
+    if (password !== undefined && (typeof password !== 'string' || password.length > 200)) {
+      return NextResponse.json({ error: 'Invalid password' }, { status: 400 });
+    }
+    if (passkeyRequired !== undefined && typeof passkeyRequired !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid passkey setting' }, { status: 400 });
     }
 
     // Check if user is authenticated to set as owner
     const session = await getSession();
     
-    // If passkeyRequired is true, user must be authenticated
-    if (passkeyRequired && !session?.userId) {
-      return NextResponse.json({ error: 'Authentication required for passkey-bound boards' }, { status: 401 });
+    // Protected boards must be bound to a real account so access can be enforced.
+    if ((passkeyRequired || password) && !session?.userId) {
+      return NextResponse.json({ error: 'Authentication required for protected boards' }, { status: 401 });
     }
     
     const ownerId = session?.userId || undefined;
 
-    const board = createBoard({ name, password, ownerId, passkeyRequired: !!passkeyRequired });
+    const board = createBoard({ name: name.trim(), password, ownerId, passkeyRequired: !!passkeyRequired });
 
     // If user is authenticated and owns the board, also add them as a member
     if (session?.userId && board.ownerId === session.userId) {
@@ -110,36 +123,50 @@ export async function POST(request: Request) {
 
 // Join board by code
 export async function PUT(request: Request) {
-  const body = await request.json();
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const { joinCode, password } = body;
 
-  if (!joinCode) {
+  if (typeof joinCode !== 'string' || !joinCode.trim()) {
     return NextResponse.json({ error: 'Join code is required' }, { status: 400 });
   }
+  const normalizedJoinCode = joinCode.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6,8}$/.test(normalizedJoinCode)) {
+    return NextResponse.json({ error: 'Invalid join code' }, { status: 400 });
+  }
 
-  const board = getBoardByJoinCode(joinCode);
+  const board = getBoardByJoinCode(normalizedJoinCode);
   if (!board) {
     return NextResponse.json({ error: 'Board not found' }, { status: 404 });
   }
 
+  const session = await getSession();
+  const protectedBoard = !!board.ownerId || board.passkeyRequired || !!board.passwordHash;
+  if (protectedBoard && !session?.userId) {
+    return NextResponse.json({ error: 'Authentication required to join this board', requiresPasskey: board.passkeyRequired, requiresPassword: !!board.passwordHash }, { status: 401 });
+  }
+
   // Check if board requires passkey authentication
   if (board.passkeyRequired) {
-    const session = await getSession();
     if (!session?.userId) {
       return NextResponse.json({ error: 'This board requires passkey authentication', requiresPasskey: true }, { status: 401 });
     }
-    // Add user as member when joining a passkey-required board
-    addBoardMember(board.id, session.userId, 'editor');
   }
 
   // Check password if board is protected
   if (board.passwordHash) {
-    if (!password) {
+    if (typeof password !== 'string' || !password) {
       return NextResponse.json({ error: 'Password required', requiresPassword: true }, { status: 401 });
     }
-    if (!verifyBoardPassword(joinCode, password)) {
+    if (!verifyBoardPassword(normalizedJoinCode, password)) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
     }
+  }
+
+  if (session?.userId) {
+    addBoardMember(board.id, session.userId, board.ownerId === session.userId ? 'owner' : 'editor');
   }
 
   // Return board info (without sensitive data)

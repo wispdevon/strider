@@ -340,15 +340,44 @@ export function acceptBoardInvite(inviteId: string): boolean {
   return true;
 }
 
+export function acceptBoardInviteForUser(inviteId: string, userId: string): boolean {
+  const db = getDb();
+  const invite = db.prepare(
+    'SELECT * FROM board_invites WHERE id = ? AND to_user_id = ? AND status = ?'
+  ).get(inviteId, userId, 'pending') as BoardInviteRow | undefined;
+
+  if (!invite) return false;
+
+  addBoardMember(invite.board_id, userId, 'editor');
+  db.prepare('UPDATE board_invites SET status = ? WHERE id = ?').run('accepted', inviteId);
+  return true;
+}
+
 export function declineBoardInvite(inviteId: string): boolean {
   const db = getDb();
   const result = db.prepare('UPDATE board_invites SET status = ? WHERE id = ? AND status = ?').run('declined', inviteId, 'pending');
   return result.changes > 0;
 }
 
+export function declineBoardInviteForUser(inviteId: string, userId: string): boolean {
+  const db = getDb();
+  const result = db.prepare(
+    'UPDATE board_invites SET status = ? WHERE id = ? AND to_user_id = ? AND status = ?'
+  ).run('declined', inviteId, userId, 'pending');
+  return result.changes > 0;
+}
+
 export function cancelBoardInvite(inviteId: string): boolean {
   const db = getDb();
   const result = db.prepare('DELETE FROM board_invites WHERE id = ? AND status = ?').run(inviteId, 'pending');
+  return result.changes > 0;
+}
+
+export function cancelBoardInviteForUser(inviteId: string, userId: string): boolean {
+  const db = getDb();
+  const result = db.prepare(
+    'DELETE FROM board_invites WHERE id = ? AND from_user_id = ? AND status = ?'
+  ).run(inviteId, userId, 'pending');
   return result.changes > 0;
 }
 

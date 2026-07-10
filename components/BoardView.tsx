@@ -453,6 +453,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                             onDelete={() => deleteProject(project.id)}
                             members={board.members as BoardMemberInfo[] | undefined}
                             onAssignProject={(userId) => handleAssignProject(project.id, userId)}
+                            boardId={board.id}
                           />
                         ))
                       ) : (

@@ -12,9 +12,10 @@ interface ProjectCardProps {
   onDelete: () => void;
   members?: BoardMemberInfo[];
   onAssignProject?: (userId: string | null) => void;
+  boardId?: string;
 }
 
-export default function ProjectCard({ project, progress, onMove, onDelete, members, onAssignProject }: ProjectCardProps) {
+export default function ProjectCard({ project, progress, onMove, onDelete, members, onAssignProject, boardId }: ProjectCardProps) {
   const completedSubtasks = project.subtasks.filter((s) => s.done).length;
   const hasMembers = members && members.length > 0;
 
@@ -63,7 +64,7 @@ export default function ProjectCard({ project, progress, onMove, onDelete, membe
 
       <div className="flex gap-2 mt-3">
         <Link
-          href={`/project/${project.slug}`}
+          href={boardId ? `/project/${project.slug}?boardId=${encodeURIComponent(boardId)}` : `/project/${project.slug}`}
           className="flex-1 text-center px-3 py-2 rounded-lg bg-[var(--panel-strong)] hover:bg-[var(--accent-soft)] text-[var(--foreground)] text-xs font-semibold transition-colors duration-200"
         >
           Open

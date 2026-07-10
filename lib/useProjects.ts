@@ -29,7 +29,7 @@ export interface BoardMemberInfo {
   role: string;
 }
 
-export function useProjects() {
+export function useProjects(boardId?: string) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -38,7 +38,8 @@ export function useProjects() {
 
     const loadProjects = async () => {
       try {
-        const response = await fetch('/api/projects');
+        const url = boardId ? `/api/projects?boardId=${encodeURIComponent(boardId)}` : '/api/projects';
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load projects');
         const data = (await response.json()) as Project[];
         if (!cancelled) {
@@ -60,7 +61,7 @@ export function useProjects() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [boardId]);
 
   const addProject = async (title: string, note: string, stage: Project['stage'], subtasks: string[], category: string, boardId?: string) => {
     const response = await fetch('/api/projects', {

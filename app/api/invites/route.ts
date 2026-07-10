@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { createBoardInvite, getBoardInvitesToUser } from '@/lib/db';
-import { getUserByFriendCode, getAvatarSeed } from '@/lib/users';
+import { getFriendsByUserId, getUserByFriendCode, getAvatarSeed } from '@/lib/users';
 import { getBoardBySlug } from '@/lib/boards';
 import { generateAvatarFromSeed } from '@/lib/avatar';
+import { getDb } from '@/lib/db-core';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
   }
 
   // Check if user is the owner or a member
-  const db = require('@/lib/db-core').getDb();
+  const db = getDb();
   const isOwner = board.ownerId === session.userId;
   if (!isOwner) {
     const isMember = db.prepare('SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?').get(board.id, session.userId);
@@ -63,6 +64,13 @@ export async function POST(request: Request) {
 
   if (friend.id === session.userId) {
     return NextResponse.json({ error: 'Cannot invite yourself' }, { status: 400 });
+  }
+
+  const isAcceptedFriend = getFriendsByUserId(session.userId).some(
+    (friendship) => friendship.friendId === friend.id && friendship.status === 'accepted'
+  );
+  if (!isAcceptedFriend) {
+    return NextResponse.json({ error: 'You can only invite accepted friends' }, { status: 403 });
   }
 
   // Check if already a member

@@ -1,11 +1,29 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db-core';
 
-// Admin endpoint to reset all avatar reroll counts
-// In production, you'd want to add authentication/authorization
+// Admin endpoint to reset all avatar reroll counts.
+// Requires Authorization: Bearer <ADMIN_API_TOKEN>; disabled if the token is unset.
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+function authorizeAdmin(request: Request) {
+  const token = process.env.ADMIN_API_TOKEN;
+  if (!token) {
+    return { ok: false as const, response: NextResponse.json({ error: 'Not found' }, { status: 404 }) };
+  }
+
+  const auth = request.headers.get('authorization') || '';
+  const provided = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
+  if (provided !== token) {
+    return { ok: false as const, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  return { ok: true as const };
+}
+
+export async function POST(request: Request) {
+  const admin = authorizeAdmin(request);
+  if (!admin.ok) return admin.response;
+
   try {
     const db = getDb();
     
@@ -19,7 +37,10 @@ export async function POST() {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const admin = authorizeAdmin(request);
+  if (!admin.ok) return admin.response;
+
   try {
     const db = getDb();
     

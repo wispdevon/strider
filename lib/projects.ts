@@ -40,6 +40,24 @@ export function getAllProjects(): Project[] {
   }));
 }
 
+export function getProjectById(id: string): Project | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    note: row.note,
+    stage: row.stage,
+    category: row.category,
+    subtasks: JSON.parse(row.subtasks) as Subtask[],
+    boardId: row.board_id,
+    assigneeId: row.assignee_id ?? null
+  };
+}
+
 /**
  * Create a project. Internal use for seeding accepts optional pre-done subtasks.
  */

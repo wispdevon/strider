@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Project, Subtask, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useEffect, useState } from 'react';
 import SegmentedProgress from './SegmentedProgress';
@@ -115,7 +116,9 @@ function SortableSubtask({ subtask, onToggle, members, onAssign }: SortableSubta
 }
 
 export default function ProjectDetail({ slug }: ProjectDetailProps) {
-  const { projects, isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects();
+  const searchParams = useSearchParams();
+  const boardId = searchParams.get('boardId') || undefined;
+  const { projects, isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(boardId);
   const [project, setProject] = useState<Project | null>(null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [showAddSubtask, setShowAddSubtask] = useState(false);

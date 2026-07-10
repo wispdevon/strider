@@ -123,17 +123,18 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
       }
 
       for (const subtask of project.subtasks) {
-        if (!subtask.done || !subtask.assigneeId) continue;
-        const member = memberLookup.get(subtask.assigneeId);
-        const current = stats.get(subtask.assigneeId) ?? {
-          userId: subtask.assigneeId,
+        const assigneeId = subtask.assigneeId ?? project.assigneeId;
+        if (!subtask.done || !assigneeId) continue;
+        const member = memberLookup.get(assigneeId);
+        const current = stats.get(assigneeId) ?? {
+          userId: assigneeId,
           name: member?.name ?? 'Unknown',
           avatar: member?.avatar ?? null,
           completedTasks: 0,
           completedSubtasks: 0,
         };
         current.completedSubtasks += 1;
-        stats.set(subtask.assigneeId, current);
+        stats.set(assigneeId, current);
       }
 
       return stats;
@@ -454,10 +455,11 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                 }
 
                 for (const subtask of project.subtasks) {
-                  if (!subtask.done || !subtask.assigneeId || assignees.has(subtask.assigneeId)) continue;
-                  const member = memberLookup.get(subtask.assigneeId);
-                  assignees.set(subtask.assigneeId, {
-                    userId: subtask.assigneeId,
+                  const assigneeId = subtask.assigneeId ?? project.assigneeId;
+                  if (!subtask.done || !assigneeId || assignees.has(assigneeId)) continue;
+                  const member = memberLookup.get(assigneeId);
+                  assignees.set(assigneeId, {
+                    userId: assigneeId,
                     name: member?.name ?? 'Unknown',
                     avatar: member?.avatar ?? null,
                   });

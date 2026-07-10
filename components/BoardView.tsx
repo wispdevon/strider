@@ -19,7 +19,7 @@ import { useCallback, useEffect, useState } from 'react';
 import UserMenu from './UserMenu';
 import InviteFriendsModal from './InviteFriendsModal';
 import BoardIcon from './BoardIcon';
-import { withVirtualAssignees } from '@/lib/virtual-assignees';
+import { getAssignableMemberPool } from '@/lib/virtual-assignees';
 
 type BoardStage = 'planning' | 'active' | 'review';
 type ProjectStage = Project['stage'];
@@ -140,7 +140,7 @@ function DraggableProjectCard({
   onMove: (direction: 'forward' | 'back') => void;
   onDelete: () => void;
   members?: BoardMemberInfo[];
-  onAssignProject?: (userId: string | null) => void;
+  onAssignProject?: (userIds: string[]) => void;
   boardId: string;
   isCompleting: boolean;
 }) {
@@ -379,9 +379,9 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     moveProjectToStage(projectId, nextStage);
   };
 
-  const handleAssignProject = (projectId: string, userId: string | null) => {
-    patchLocalProject(projectId, { assigneeId: userId });
-    void updateProject(projectId, { assigneeId: userId });
+  const handleAssignProject = (projectId: string, userIds: string[]) => {
+    patchLocalProject(projectId, { assigneeId: userIds[0] ?? null, assigneeIds: userIds });
+    void updateProject(projectId, { assigneeId: userIds[0] ?? null, assigneeIds: userIds });
   };
 
   const handleDeleteProject = (projectId: string) => {
@@ -422,6 +422,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         category: project.category,
         boardId: project.boardId,
         assigneeId: project.assigneeId ?? null,
+        assigneeIds: project.assigneeIds ?? (project.assigneeId ? [project.assigneeId] : []),
         completedAt: project.completedAt ?? null,
         sortOrder: project.sortOrder ?? 0,
         subtasks: project.subtasks,
@@ -521,7 +522,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   };
 
   const assignableMembers = board
-    ? withVirtualAssignees((board.members ?? []) as BoardMemberInfo[])
+    ? getAssignableMemberPool((board.members ?? []) as BoardMemberInfo[])
     : [];
 
   return (
@@ -978,7 +979,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                                   onMove={(direction) => handleMoveProject(project.id, direction)}
                                   onDelete={() => handleDeleteProject(project.id)}
                                   members={assignableMembers as BoardMemberInfo[]}
-                                  onAssignProject={(userId) => handleAssignProject(project.id, userId)}
+                                  onAssignProject={(userIds) => handleAssignProject(project.id, userIds)}
                                   boardId={board.id}
                                   isCompleting={completingProjectIds.has(project.id)}
                                 />

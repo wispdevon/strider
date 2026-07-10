@@ -19,13 +19,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Project, Subtask, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useEffect, useState } from 'react';
 import AssigneeSelector from './AssigneeSelector';
 import FriendsList from './FriendsList';
 import UserMenu from './UserMenu';
-import { withVirtualAssignees } from '@/lib/virtual-assignees';
+import { getAssignableMemberPool } from '@/lib/virtual-assignees';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -43,7 +43,7 @@ interface SortableSubtaskProps {
   onRename: (title: string) => void;
   onDelete: () => void;
   members?: BoardMemberInfo[];
-  onAssign?: (userId: string | null) => void;
+  onAssign?: (userIds: string[]) => void;
 }
 
 interface ProjectBoardInfo {
@@ -114,7 +114,7 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
       style={style}
       className={`grid min-w-[40rem] grid-cols-[auto_auto_minmax(18rem,1fr)_auto_auto] items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border transition-all duration-300 ${
         subtask.done
-          ? 'bg-[#ecebe7] border-[#b3b2ae] text-[#3f3f3f]'
+          ? 'bg-[var(--accent-soft)] border-[var(--accent-sheen)] text-[var(--foreground)]'
           : 'bg-[var(--panel)] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--panel-strong)]'
       }`}
     >
@@ -182,6 +182,7 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
         <AssigneeSelector
           members={members}
           assigneeId={subtask.assigneeId}
+          assigneeIds={subtask.assigneeIds}
           onAssign={onAssign}
           size="sm"
         />
@@ -201,6 +202,7 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
 }
 
 export default function ProjectDetail({ slug }: ProjectDetailProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const boardId = searchParams.get('boardId') || undefined;
   const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(boardId);
@@ -234,7 +236,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
             setBoard({ id: data.id, name: data.name, slug: data.slug });
           }
           if (data?.members) {
-            setMembers(withVirtualAssignees(data.members.map((m) => ({
+            setMembers(getAssignableMemberPool(data.members.map((m) => ({
               id: m.id,
               userId: m.userId,
               name: m.name,
@@ -275,9 +277,10 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
 
     if (nextStage === 'done') {
       setIsCompleting(true);
-      window.setTimeout(() => {
-        updateProject(project.id, { stage: 'done', completedAt: new Date().toISOString() });
+      window.setTimeout(async () => {
+        await updateProject(project.id, { stage: 'done', completedAt: new Date().toISOString() });
         setIsCompleting(false);
+        router.push(boardHref);
       }, 620);
       return;
     }
@@ -304,8 +307,8 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
     }
   };
 
-  const handleAssignProject = (userId: string | null) => {
-    updateProject(project.id, { assigneeId: userId });
+  const handleAssignProject = (userIds: string[]) => {
+    updateProject(project.id, { assigneeId: userIds[0] ?? null, assigneeIds: userIds });
   };
 
   const handleRenameSubtask = (subtaskId: string, title: string) => {
@@ -380,6 +383,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                 <AssigneeSelector
                   members={members}
                   assigneeId={project.assigneeId}
+                  assigneeIds={project.assigneeIds}
                   onAssign={handleAssignProject}
                   size="md"
                   label="Assign"
@@ -420,52 +424,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
           >
             <div className="flex justify-between items-center mb-4">
               <h2 className="section-heading text-[var(--foreground)] text-xl">Subtasks</h2>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowAddSubtask(!showAddSubtask)}
-                aria-label="Add subtask"
-                title="Add subtask"
-                className={`app-toolbar-button transition-all duration-300 ${
-                  showAddSubtask
-                    ? 'app-toolbar-button-primary'
-                    : 'app-toolbar-button-neutral'
-                }`}
-              >
-                <span aria-hidden="true">+</span>
-                <span className="hidden sm:inline">Add subtask</span>
-              </motion.button>
             </div>
-
-            {/* Add Subtask Form */}
-            <AnimatePresence>
-              {showAddSubtask && (
-                <motion.form
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  onSubmit={handleAddSubtask}
-                  className="mb-4 flex gap-2"
-                >
-                  <input
-                    type="text"
-                    placeholder="Subtask title"
-                    value={newSubtaskTitle}
-                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                    autoFocus
-                    className="flex-1 px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
-                  />
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    type="submit"
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent)]/95 transition-all duration-300 shadow-[0_8px_20px_rgba(29,31,35,0.16)]"
-                  >
-                    Add
-                  </motion.button>
-                </motion.form>
-              )}
-            </AnimatePresence>
 
             {/* Draggable Subtasks List */}
             <DndContext
@@ -484,9 +443,50 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                         onRename={(title) => handleRenameSubtask(subtask.id, title)}
                         onDelete={() => handleDeleteSubtask(subtask.id)}
                         members={hasMembers ? members : undefined}
-                        onAssign={hasMembers ? (userId) => assignSubtask(project.id, subtask.id, userId) : undefined}
+                        onAssign={hasMembers ? (userIds) => assignSubtask(project.id, subtask.id, userIds) : undefined}
                       />
                     ))}
+                    {showAddSubtask ? (
+                      <motion.form
+                        key="add-subtask-form"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        onSubmit={handleAddSubtask}
+                        className="flex min-w-[40rem] gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4"
+                      >
+                        <input
+                          type="text"
+                          placeholder="Subtask title"
+                          value={newSubtaskTitle}
+                          onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                          autoFocus
+                          className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 py-2 text-[var(--foreground)] placeholder-[var(--muted)] focus:border-[var(--accent)]/40 focus:outline-none"
+                        />
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          type="submit"
+                          className="rounded-lg bg-[var(--accent)] px-4 py-2 font-medium text-white shadow-[0_8px_20px_rgba(29,31,35,0.16)] transition-all duration-300 hover:bg-[var(--accent)]/95"
+                        >
+                          Add
+                        </motion.button>
+                      </motion.form>
+                    ) : (
+                      <motion.button
+                        key="add-subtask-button"
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        type="button"
+                        onClick={() => setShowAddSubtask(true)}
+                        aria-label="Add subtask"
+                        title="Add subtask"
+                        className="flex min-w-[40rem] items-center gap-2 rounded-lg border border-dashed border-[var(--border)] bg-[var(--panel)] px-3 py-3 text-left font-medium text-[var(--muted)] transition-colors hover:border-[var(--accent-sheen)] hover:bg-[var(--panel-strong)] hover:text-[var(--foreground)] sm:px-4"
+                      >
+                        <span aria-hidden="true">+</span>
+                        <span>Add subtask</span>
+                      </motion.button>
+                    )}
                   </AnimatePresence>
                 </div>
               </SortableContext>

@@ -7,6 +7,7 @@ export interface Subtask {
   title: string;
   done: boolean;
   assigneeId?: string | null;
+  assigneeIds?: string[];
 }
 
 export interface Project {
@@ -19,6 +20,7 @@ export interface Project {
   subtasks: Subtask[];
   boardId: string;
   assigneeId?: string | null;
+  assigneeIds?: string[];
   completedAt?: string | null;
   sortOrder?: number;
 }
@@ -87,6 +89,7 @@ export interface ProjectRow {
   subtasks: string;
   board_id: string;
   assignee_id: string | null;
+  assignee_ids: string | null;
   completed_at: string | null;
   sort_order: number;
 }

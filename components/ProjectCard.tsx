@@ -11,7 +11,7 @@ interface ProjectCardProps {
   onMove: (direction: 'forward' | 'back') => void;
   onDelete: () => void;
   members?: BoardMemberInfo[];
-  onAssignProject?: (userId: string | null) => void;
+  onAssignProject?: (userIds: string[]) => void;
   boardId?: string;
   isDragging?: boolean;
   isCompleting?: boolean;
@@ -72,6 +72,7 @@ export default function ProjectCard({
             <AssigneeSelector
               members={members}
               assigneeId={project.assigneeId}
+              assigneeIds={project.assigneeIds}
               onAssign={onAssignProject}
               size="sm"
             />

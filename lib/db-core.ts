@@ -285,6 +285,7 @@ function initializeDb() {
       subtasks TEXT NOT NULL DEFAULT '[]',
       board_id TEXT NOT NULL,
       assignee_id TEXT,
+      assignee_ids TEXT,
       completed_at TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -293,11 +294,14 @@ function initializeDb() {
     );
   `);
 
-  // Add assignee_id column if it doesn't exist (migration)
+  // Add assignee columns if they don't exist (migration)
   try {
     const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
     if (columns.length > 0 && !columns.some(col => col.name === 'assignee_id')) {
       db.exec(`ALTER TABLE projects ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE SET NULL`);
+    }
+    if (columns.length > 0 && !columns.some(col => col.name === 'assignee_ids')) {
+      db.exec(`ALTER TABLE projects ADD COLUMN assignee_ids TEXT`);
     }
   } catch {
     // Column might already exist, ignore

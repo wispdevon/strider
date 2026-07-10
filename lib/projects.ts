@@ -5,7 +5,31 @@
 import { getDb } from './db-core';
 import type { Project, ProjectRow, Subtask } from './types';
 
+function normalizeAssigneeIds(assigneeIds?: string[] | null, fallbackId?: string | null): string[] {
+  const ids = Array.isArray(assigneeIds) ? assigneeIds : [];
+  const withFallback = fallbackId ? [fallbackId, ...ids] : ids;
+  return Array.from(new Set(withFallback.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
+}
+
+function parseAssigneeIds(value: string | null | undefined, fallbackId?: string | null): string[] {
+  if (!value) return normalizeAssigneeIds([], fallbackId);
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return normalizeAssigneeIds(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [], fallbackId);
+  } catch {
+    return normalizeAssigneeIds([], fallbackId);
+  }
+}
+
+function normalizeSubtasks(subtasks: Subtask[]): Subtask[] {
+  return subtasks.map((subtask) => ({
+    ...subtask,
+    assigneeIds: normalizeAssigneeIds(subtask.assigneeIds, subtask.assigneeId),
+  }));
+}
+
 function mapProjectRow(row: ProjectRow): Project {
+  const assigneeIds = parseAssigneeIds(row.assignee_ids, row.assignee_id);
   return {
     id: row.id,
     slug: row.slug,
@@ -13,9 +37,10 @@ function mapProjectRow(row: ProjectRow): Project {
     note: row.note,
     stage: row.stage,
     category: row.category,
-    subtasks: JSON.parse(row.subtasks) as Subtask[],
+    subtasks: normalizeSubtasks(JSON.parse(row.subtasks) as Subtask[]),
     boardId: row.board_id,
     assigneeId: row.assignee_id ?? null,
+    assigneeIds,
     completedAt: row.completed_at ?? null,
     sortOrder: row.sort_order ?? 0
   };
@@ -105,13 +130,15 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
   if (!current) return null;
 
   const merged = { ...current, ...updates };
+  const assigneeIds = normalizeAssigneeIds(merged.assigneeIds, merged.assigneeId);
+  const subtasks = normalizeSubtasks(merged.subtasks);
   const completedAt = merged.stage === 'done'
     ? (updates.completedAt !== undefined ? updates.completedAt : current.completedAt ?? new Date().toISOString())
     : null;
   const db = getDb();
   db.prepare(`
     UPDATE projects
-    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId, completed_at = @completedAt, sort_order = @sortOrder
+    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId, assignee_ids = @assigneeIds, completed_at = @completedAt, sort_order = @sortOrder
     WHERE id = @id
   `).run({
     id,
@@ -120,13 +147,14 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
     note: merged.note,
     stage: merged.stage,
     category: merged.category,
-    subtasks: JSON.stringify(merged.subtasks),
-    assigneeId: merged.assigneeId ?? null,
+    subtasks: JSON.stringify(subtasks),
+    assigneeId: assigneeIds[0] ?? null,
+    assigneeIds: JSON.stringify(assigneeIds),
     completedAt,
     sortOrder: merged.sortOrder ?? 0
   });
 
-  return { ...merged, completedAt, sortOrder: merged.sortOrder ?? 0 };
+  return { ...merged, subtasks, assigneeId: assigneeIds[0] ?? null, assigneeIds, completedAt, sortOrder: merged.sortOrder ?? 0 };
 }
 
 /**
@@ -137,22 +165,24 @@ export function assignProject(projectId: string, userId: string | null): Project
   const current = getAllProjects().find((project) => project.id === projectId);
   if (!current) return null;
 
+  const assigneeIds = normalizeAssigneeIds(userId ? [userId] : []);
   const db = getDb();
-  db.prepare('UPDATE projects SET assignee_id = ? WHERE id = ?').run(userId, projectId);
+  db.prepare('UPDATE projects SET assignee_id = ?, assignee_ids = ? WHERE id = ?').run(assigneeIds[0] ?? null, JSON.stringify(assigneeIds), projectId);
 
-  return { ...current, assigneeId: userId };
+  return { ...current, assigneeId: assigneeIds[0] ?? null, assigneeIds };
 }
 
 /**
  * Assign a user to a specific subtask.
  * Pass null to unassign.
  */
-export function assignSubtask(projectId: string, subtaskId: string, userId: string | null): Project | null {
+export function assignSubtask(projectId: string, subtaskId: string, userIds: string[] | string | null): Project | null {
   const current = getAllProjects().find((project) => project.id === projectId);
   if (!current) return null;
 
+  const assigneeIds = normalizeAssigneeIds(Array.isArray(userIds) ? userIds : userIds ? [userIds] : []);
   const updatedSubtasks = current.subtasks.map((subtask) =>
-    subtask.id === subtaskId ? { ...subtask, assigneeId: userId } : subtask
+    subtask.id === subtaskId ? { ...subtask, assigneeId: assigneeIds[0] ?? null, assigneeIds } : subtask
   );
 
   return updateProject(projectId, { subtasks: updatedSubtasks });

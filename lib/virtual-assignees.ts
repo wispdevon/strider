@@ -33,3 +33,7 @@ export function withVirtualAssignees<T extends AssignableMember>(members: T[] = 
     ...VIRTUAL_ASSIGNEES.filter((member) => !existingIds.has(member.userId)),
   ];
 }
+
+export function getAssignableMemberPool<T extends AssignableMember>(members: T[] = []): Array<T | AssignableMember> {
+  return withVirtualAssignees(members);
+}

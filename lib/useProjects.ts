@@ -7,6 +7,7 @@ export interface Subtask {
   title: string;
   done: boolean;
   assigneeId?: string | null;
+  assigneeIds?: string[];
 }
 
 export interface Project {
@@ -19,6 +20,7 @@ export interface Project {
   subtasks: Subtask[];
   boardId?: string;
   assigneeId?: string | null;
+  assigneeIds?: string[];
   completedAt?: string | null;
   sortOrder?: number;
 }
@@ -111,11 +113,11 @@ export function useProjects(boardId?: string) {
     setProjects((current) => current.map((project) => (project.id === projectId ? updated : project)));
   };
 
-  const assignSubtask = async (projectId: string, subtaskId: string, assigneeId: string | null) => {
+  const assignSubtask = async (projectId: string, subtaskId: string, assigneeIds: string[]) => {
     const response = await fetch(`/api/projects/${projectId}/subtasks/${subtaskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'assign', assigneeId })
+      body: JSON.stringify({ mode: 'assign', assigneeIds })
     });
 
     if (!response.ok) return;

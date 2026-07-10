@@ -64,6 +64,15 @@ function formatCompletedDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function getAssigneeIds(assigneeIds?: string[], assigneeId?: string | null) {
+  const ids = Array.isArray(assigneeIds) ? assigneeIds : [];
+  return Array.from(new Set([...(assigneeId ? [assigneeId] : []), ...ids].filter(Boolean)));
+}
+
+function codexAvatarClass(userId: string) {
+  return userId === CODEX_ASSIGNEE_ID ? ' codex-agent-avatar' : '';
+}
+
 export default function HallOfFame({ boardSlug }: HallOfFameProps) {
   const { projects, isLoaded } = useProjects();
   const [board, setBoard] = useState<BoardHistory | null>(null);
@@ -108,22 +117,7 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
   const memberLookup = new Map(assignableMembers.map((member) => [member.userId, member]));
   const userStats = Array.from(
     doneProjects.reduce((stats, project) => {
-      if (project.assigneeId) {
-        const member = memberLookup.get(project.assigneeId);
-        const current = stats.get(project.assigneeId) ?? {
-          userId: project.assigneeId,
-          name: member?.name ?? 'Unknown',
-          avatar: member?.avatar ?? null,
-          completedTasks: 0,
-          completedSubtasks: 0,
-        };
-        current.completedTasks += 1;
-        stats.set(project.assigneeId, current);
-      }
-
-      for (const subtask of project.subtasks) {
-        const assigneeId = subtask.assigneeId ?? project.assigneeId;
-        if (!subtask.done || !assigneeId) continue;
+      for (const assigneeId of getAssigneeIds(project.assigneeIds, project.assigneeId)) {
         const member = memberLookup.get(assigneeId);
         const current = stats.get(assigneeId) ?? {
           userId: assigneeId,
@@ -132,8 +126,26 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
           completedTasks: 0,
           completedSubtasks: 0,
         };
-        current.completedSubtasks += 1;
+        current.completedTasks += 1;
         stats.set(assigneeId, current);
+      }
+
+      for (const subtask of project.subtasks) {
+        if (!subtask.done) continue;
+        const subtaskAssignees = getAssigneeIds(subtask.assigneeIds, subtask.assigneeId);
+        const fallbackAssignees = getAssigneeIds(project.assigneeIds, project.assigneeId);
+        for (const assigneeId of subtaskAssignees.length > 0 ? subtaskAssignees : fallbackAssignees) {
+          const member = memberLookup.get(assigneeId);
+          const current = stats.get(assigneeId) ?? {
+            userId: assigneeId,
+            name: member?.name ?? 'Unknown',
+            avatar: member?.avatar ?? null,
+            completedTasks: 0,
+            completedSubtasks: 0,
+          };
+          current.completedSubtasks += 1;
+          stats.set(assigneeId, current);
+        }
       }
 
       return stats;
@@ -317,7 +329,7 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                         <div className="absolute -right-8 top-9 h-10 w-12 rotate-[30deg] rounded-full border-r-4 border-t-2 border-stone-100/75" />
                         {leader.avatar ? (
                           <div
-                            className="h-20 w-20 rounded-full bg-white bg-[length:68%_68%] bg-center bg-no-repeat shadow-[inset_0_0_18px_rgba(255,255,255,0.7)]"
+                            className={`h-20 w-20 rounded-full bg-white bg-[length:68%_68%] bg-center bg-no-repeat shadow-[inset_0_0_18px_rgba(255,255,255,0.7)]${codexAvatarClass(leader.userId)}`}
                             style={{ backgroundImage: `url(${leader.avatar})` }}
                           />
                         ) : (
@@ -444,24 +456,28 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                 const side = index % 2 === 0 ? 'md:pr-[55%]' : 'md:pl-[55%]';
                 const assignees = new Map<string, TimelineAssignee>();
 
-                if (project.assigneeId) {
-                  const member = memberLookup.get(project.assigneeId);
-                  assignees.set(project.assigneeId, {
-                    userId: project.assigneeId,
-                    name: member?.name ?? 'Unknown',
-                    avatar: member?.avatar ?? null,
-                  });
-                }
-
-                for (const subtask of project.subtasks) {
-                  const assigneeId = subtask.assigneeId ?? project.assigneeId;
-                  if (!subtask.done || !assigneeId || assignees.has(assigneeId)) continue;
+                for (const assigneeId of getAssigneeIds(project.assigneeIds, project.assigneeId)) {
                   const member = memberLookup.get(assigneeId);
                   assignees.set(assigneeId, {
                     userId: assigneeId,
                     name: member?.name ?? 'Unknown',
                     avatar: member?.avatar ?? null,
                   });
+                }
+
+                for (const subtask of project.subtasks) {
+                  if (!subtask.done) continue;
+                  const subtaskAssignees = getAssigneeIds(subtask.assigneeIds, subtask.assigneeId);
+                  const fallbackAssignees = getAssigneeIds(project.assigneeIds, project.assigneeId);
+                  for (const assigneeId of subtaskAssignees.length > 0 ? subtaskAssignees : fallbackAssignees) {
+                    if (assignees.has(assigneeId)) continue;
+                    const member = memberLookup.get(assigneeId);
+                    assignees.set(assigneeId, {
+                      userId: assigneeId,
+                      name: member?.name ?? 'Unknown',
+                      avatar: member?.avatar ?? null,
+                    });
+                  }
                 }
 
                 const timelineAssignees = Array.from(assignees.values());
@@ -496,7 +512,7 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                                 <div
                                   key={assignee.userId}
                                   title={assignee.name}
-                                  className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-white bg-cover bg-center text-xs font-black uppercase text-black shadow-[0_0_0_1px_rgba(255,255,255,0.45)]"
+                                  className={`flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-white bg-cover bg-center text-xs font-black uppercase text-black shadow-[0_0_0_1px_rgba(255,255,255,0.45)]${codexAvatarClass(assignee.userId)}`}
                                   style={assignee.avatar ? { backgroundImage: `url(${assignee.avatar})` } : undefined}
                                 >
                                   {!assignee.avatar && assignee.name.charAt(0)}

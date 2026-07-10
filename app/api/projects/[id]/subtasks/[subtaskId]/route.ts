@@ -24,8 +24,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (mode === 'delete') {
     updated = deleteSubtask(id, subtaskId);
   } else if (mode === 'assign') {
-    // body.assigneeId is a user id or null (to unassign)
-    updated = assignSubtask(id, subtaskId, body.assigneeId ?? null);
+    // body.assigneeIds is the current full assignee list; assigneeId remains for older clients.
+    updated = assignSubtask(id, subtaskId, Array.isArray(body.assigneeIds) ? body.assigneeIds : body.assigneeId ?? null);
   } else {
     updated = toggleSubtask(id, subtaskId);
   }

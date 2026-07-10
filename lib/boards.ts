@@ -5,6 +5,42 @@
 import { getDb, generateCode, generatePin, hashPassword } from './db-core';
 import type { Board, BoardWithProjects, BoardRow, Project, ProjectRow, BoardMember, BoardMemberRow, BoardInviteRow } from './types';
 
+function normalizeAssigneeIds(assigneeIds?: string[] | null, fallbackId?: string | null): string[] {
+  const ids = Array.isArray(assigneeIds) ? assigneeIds : [];
+  const withFallback = fallbackId ? [fallbackId, ...ids] : ids;
+  return Array.from(new Set(withFallback.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)));
+}
+
+function parseAssigneeIds(value: string | null | undefined, fallbackId?: string | null): string[] {
+  if (!value) return normalizeAssigneeIds([], fallbackId);
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return normalizeAssigneeIds(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [], fallbackId);
+  } catch {
+    return normalizeAssigneeIds([], fallbackId);
+  }
+}
+
+function normalizeProjectSubtasks(subtasks: Project['subtasks']): Project['subtasks'] {
+  return subtasks.map((subtask) => ({
+    ...subtask,
+    assigneeIds: normalizeAssigneeIds(subtask.assigneeIds, subtask.assigneeId),
+  }));
+}
+
+interface IncomingBoardInviteRow extends BoardInviteRow {
+  board_name: string;
+  board_slug: string;
+  board_join_code: string;
+  from_name: string;
+  from_friend_code: string;
+}
+
+interface OutgoingBoardInviteRow extends BoardInviteRow {
+  to_name: string;
+  to_friend_code: string;
+}
+
 // Board functions
 export function getAllBoards(): Board[] {
   const db = getDb();
@@ -66,19 +102,23 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
 
   // Inline project fetch to avoid circular dependency
   const projectRows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY sort_order ASC, created_at DESC').all(board.id) as ProjectRow[];
-  const projects: Project[] = projectRows.map((projRow) => ({
-    id: projRow.id,
-    slug: projRow.slug,
-    title: projRow.title,
-    note: projRow.note,
-    stage: projRow.stage,
-    category: projRow.category,
-    subtasks: JSON.parse(projRow.subtasks) as Project['subtasks'],
-    boardId: projRow.board_id,
-    assigneeId: projRow.assignee_id ?? null,
-    completedAt: projRow.completed_at ?? null,
-    sortOrder: projRow.sort_order ?? 0
-  }));
+  const projects: Project[] = projectRows.map((projRow) => {
+    const assigneeIds = parseAssigneeIds(projRow.assignee_ids, projRow.assignee_id);
+    return {
+      id: projRow.id,
+      slug: projRow.slug,
+      title: projRow.title,
+      note: projRow.note,
+      stage: projRow.stage,
+      category: projRow.category,
+      subtasks: normalizeProjectSubtasks(JSON.parse(projRow.subtasks) as Project['subtasks']),
+      boardId: projRow.board_id,
+      assigneeId: projRow.assignee_id ?? null,
+      assigneeIds,
+      completedAt: projRow.completed_at ?? null,
+      sortOrder: projRow.sort_order ?? 0
+    };
+  });
 
   return { ...board, projects };
 }
@@ -324,7 +364,7 @@ export function getBoardInvitesToUser(userId: string) {
     INNER JOIN users u ON u.id = bi.from_user_id
     WHERE bi.to_user_id = ? AND bi.status = 'pending'
     ORDER BY bi.created_at DESC
-  `).all(userId) as any[];
+  `).all(userId) as IncomingBoardInviteRow[];
   
   return rows.map((row) => ({
     id: row.id,
@@ -355,7 +395,7 @@ export function getBoardInvitesFromUser(userId: string, boardId: string) {
     INNER JOIN users u ON u.id = bi.to_user_id
     WHERE bi.from_user_id = ? AND bi.board_id = ? AND bi.status = 'pending'
     ORDER BY bi.created_at DESC
-  `).all(userId, boardId) as any[];
+  `).all(userId, boardId) as OutgoingBoardInviteRow[];
   
   return rows.map((row) => ({
     id: row.id,
@@ -374,7 +414,7 @@ export function getBoardInvitesFromUser(userId: string, boardId: string) {
 
 export function acceptBoardInvite(inviteId: string): boolean {
   const db = getDb();
-  const invite = db.prepare('SELECT * FROM board_invites WHERE id = ?').get(inviteId) as any;
+  const invite = db.prepare('SELECT * FROM board_invites WHERE id = ?').get(inviteId) as BoardInviteRow | undefined;
   
   if (!invite) return false;
   

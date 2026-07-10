@@ -1,19 +1,41 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  DndContext,
+  DragOverlay,
+  DragEndEvent,
+  DragStartEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import Link from 'next/link';
 import ProjectCard from './ProjectCard';
 import { Project, useProjects, BoardMemberInfo } from '@/lib/useProjects';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import UserMenu from './UserMenu';
 import InviteFriendsModal from './InviteFriendsModal';
 import BoardIcon from './BoardIcon';
 
-const STAGES = [
-  { key: 'planning', label: 'Plan' },
-  { key: 'active', label: 'Active' },
-  { key: 'review', label: 'Review' }
+type BoardStage = 'planning' | 'active' | 'review';
+type ProjectStage = Project['stage'];
+
+const STAGES: Array<{ key: BoardStage; label: string; accepts: ProjectStage[] }> = [
+  { key: 'planning', label: 'Plan', accepts: ['idea', 'planning'] },
+  { key: 'active', label: 'Active', accepts: ['active'] },
+  { key: 'review', label: 'Review', accepts: ['review'] }
 ];
+
+const STAGE_LABELS: Record<ProjectStage, string> = {
+  idea: 'Plan',
+  planning: 'Plan',
+  active: 'Active',
+  review: 'Review',
+  done: 'Done',
+};
 
 interface BoardViewProps {
   boardSlug: string;
@@ -51,15 +73,115 @@ interface FriendOption {
   avatar?: string;
 }
 
+interface ProjectFormData {
+  title: string;
+  note: string;
+  stage: BoardStage;
+  subtasks: string;
+  category: string;
+}
+
+function getNextStage(stage: ProjectStage): ProjectStage {
+  if (stage === 'idea' || stage === 'planning') return 'active';
+  if (stage === 'active') return 'review';
+  if (stage === 'review') return 'done';
+  return 'done';
+}
+
+function getPreviousStage(stage: ProjectStage): ProjectStage {
+  if (stage === 'review') return 'active';
+  if (stage === 'active') return 'planning';
+  return stage;
+}
+
+function isProjectInBoardStage(project: Project, stage: BoardStage) {
+  return STAGES.find((item) => item.key === stage)?.accepts.includes(project.stage) ?? false;
+}
+
+function StageDropZone({
+  id,
+  children,
+}: {
+  id: string;
+  children: (isOver: boolean) => React.ReactNode;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id });
+
+  return (
+    <div ref={setNodeRef}>
+      {children(isOver)}
+    </div>
+  );
+}
+
+function DraggableProjectCard({
+  project,
+  progress,
+  onMove,
+  onDelete,
+  members,
+  onAssignProject,
+  boardId,
+  isCompleting,
+}: {
+  project: Project;
+  progress: number;
+  onMove: (direction: 'forward' | 'back') => void;
+  onDelete: () => void;
+  members?: BoardMemberInfo[];
+  onAssignProject?: (userId: string | null) => void;
+  boardId: string;
+  isCompleting: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+  } = useDraggable({
+    id: project.id,
+    data: { projectId: project.id, stage: project.stage },
+  });
+
+  const style = {
+    position: 'relative' as const,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="cursor-grab touch-none select-none active:cursor-grabbing"
+    >
+      <ProjectCard
+        project={project}
+        progress={progress}
+        onMove={onMove}
+        onDelete={onDelete}
+        members={members}
+        onAssignProject={onAssignProject}
+        boardId={boardId}
+        isDragging={isDragging}
+        isCompleting={isCompleting}
+        disableLayoutAnimation={isDragging}
+        nextActionLabel={project.stage === 'review' ? 'Complete project' : `Move to ${STAGE_LABELS[getNextStage(project.stage)]}`}
+        nextActionIcon={project.stage === 'review' ? '🔥' : '→'}
+      />
+    </div>
+  );
+}
+
 export default function BoardView({ boardSlug }: BoardViewProps) {
   const { isLoaded, addProject, updateProject, deleteProject, getProjectProgress } = useProjects();
   const [board, setBoard] = useState<BoardInfo | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ProjectFormData>({
     title: '',
     note: '',
-    stage: 'planning' as const,
+    stage: 'planning',
     subtasks: '',
     category: ''
   });
@@ -72,12 +194,17 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   const [settingsError, setSettingsError] = useState('');
   const [friends, setFriends] = useState<FriendOption[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [activeDragProjectId, setActiveDragProjectId] = useState<string | null>(null);
+  const [completingProjectIds, setCompletingProjectIds] = useState<Set<string>>(new Set());
+  const [showCategoryOptions, setShowCategoryOptions] = useState(false);
 
-  useEffect(() => {
-    loadBoard();
-  }, [boardSlug]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
 
-  const loadBoard = async () => {
+  const loadBoard = useCallback(async () => {
     try {
       const response = await fetch(`/api/boards/${boardSlug}`);
       if (response.ok) {
@@ -89,7 +216,15 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     } finally {
       setBoardLoading(false);
     }
-  };
+  }, [boardSlug]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadBoard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadBoard]);
 
   if (!isLoaded || boardLoading) {
     return (
@@ -122,25 +257,100 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   const projects = board.projects || [];
   const activeProjects = projects.filter((p) => p.stage !== 'done');
   const doneCount = projects.filter((p) => p.stage === 'done').length;
+  const categoryOptions = Array.from(
+    new Set(projects.map((project) => project.category.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const patchLocalProject = (projectId: string, updates: Partial<Project>) => {
+    setBoard((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        projects: current.projects.map((project) =>
+          project.id === projectId ? { ...project, ...updates } : project
+        ),
+      };
+    });
+  };
+
+  const finishProject = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project || project.stage !== 'review' || completingProjectIds.has(projectId)) return;
+
+    setCompletingProjectIds((current) => new Set(current).add(projectId));
+    window.setTimeout(() => {
+      const completedAt = new Date().toISOString();
+      patchLocalProject(projectId, { stage: 'done', completedAt });
+      void updateProject(projectId, { stage: 'done', completedAt });
+      setCompletingProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
+    }, 560);
+  };
+
+  const moveProjectToStage = (projectId: string, stage: ProjectStage) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project || project.stage === stage) return;
+
+    if (stage === 'done') {
+      finishProject(projectId);
+      return;
+    }
+
+    patchLocalProject(projectId, { stage });
+    void updateProject(projectId, { stage });
+  };
 
   const handleMoveProject = (projectId: string, direction: 'forward' | 'back') => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
 
-    const currentIndex = STAGES.findIndex((s) => s.key === project.stage);
-    let newIndex = currentIndex;
+    const nextStage = direction === 'forward'
+      ? getNextStage(project.stage)
+      : getPreviousStage(project.stage);
 
-    if (direction === 'forward') {
-      newIndex = Math.min(STAGES.length - 1, currentIndex + 1);
-    } else {
-      newIndex = Math.max(0, currentIndex - 1);
-    }
-
-    updateProject(projectId, { stage: STAGES[newIndex].key as any });
+    moveProjectToStage(projectId, nextStage);
   };
 
   const handleAssignProject = (projectId: string, userId: string | null) => {
-    updateProject(projectId, { assigneeId: userId });
+    patchLocalProject(projectId, { assigneeId: userId });
+    void updateProject(projectId, { assigneeId: userId });
+  };
+
+  const handleDeleteProject = (projectId: string) => {
+    setBoard((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        projects: current.projects.filter((project) => project.id !== projectId),
+      };
+    });
+    void deleteProject(projectId);
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragProjectId(String(event.active.id));
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const projectId = String(event.active.id);
+    const targetId = event.over?.id ? String(event.over.id) : null;
+    setActiveDragProjectId(null);
+
+    if (!targetId) return;
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) return;
+
+    const targetStage = STAGES.find((stage) => `stage:${stage.key}` === targetId);
+    if (!targetStage || isProjectInBoardStage(project, targetStage.key)) return;
+
+    moveProjectToStage(projectId, targetStage.key);
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragProjectId(null);
   };
 
   const handleAddProject = (e: React.FormEvent) => {
@@ -161,6 +371,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
       subtasks: '',
       category: ''
     });
+    setShowCategoryOptions(false);
     setShowForm(false);
     loadBoard();
   };
@@ -329,16 +540,47 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
               />
-              <input
-                type="text"
-                placeholder="Category"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Category"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  onFocus={() => categoryOptions.length > 0 && setShowCategoryOptions(true)}
+                  onBlur={() => window.setTimeout(() => setShowCategoryOptions(false), 120)}
+                  className="w-full px-3 py-2 pr-11 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryOptions((open) => !open)}
+                  className="absolute right-1 top-1 bottom-1 w-9 rounded-md bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 transition-colors"
+                  aria-label="Show categories"
+                  title="Show categories"
+                >
+                  ▾
+                </button>
+                {showCategoryOptions && categoryOptions.length > 0 && (
+                  <div className="absolute z-[80] mt-1 w-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--panel)] shadow-[0_12px_36px_rgba(17,17,17,0.12)]">
+                    {categoryOptions.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setFormData({ ...formData, category });
+                          setShowCategoryOptions(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-[var(--foreground)] hover:bg-[var(--accent-soft)] transition-colors"
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <select
                 value={formData.stage}
-                onChange={(e) => setFormData({ ...formData, stage: e.target.value as any })}
+                onChange={(e) => setFormData({ ...formData, stage: e.target.value as BoardStage })}
                 className="px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-2 focus:ring-[var(--accent-glow)]"
               >
                 {STAGES.map((s) => (
@@ -559,63 +801,105 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
 
       {/* Board */}
       <div className="max-w-full mx-auto px-6 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {STAGES.map((stage, stageIndex) => {
-            const stageProjects = activeProjects.filter((p) => p.stage === stage.key);
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {STAGES.map((stage, stageIndex) => {
+              const stageProjects = activeProjects.filter((p) => isProjectInBoardStage(p, stage.key));
 
-            return (
-              <motion.div
-                key={stage.key}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + stageIndex * 0.05 }}
-              >
-                <div className="sticky top-32">
-                  <h2 className="section-heading text-[var(--foreground)] text-lg mb-3 flex justify-between items-center">
-                    <span>{stage.label}</span>
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="text-xs px-2 py-1 rounded-full bg-[var(--panel-strong)] text-[var(--muted)]"
-                    >
-                      {stageProjects.length}
-                    </motion.span>
-                  </h2>
+              return (
+                <motion.div
+                  key={stage.key}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 + stageIndex * 0.05 }}
+                >
+                  <div className="sticky top-32">
+                    <h2 className="section-heading text-[var(--foreground)] text-lg mb-3 flex justify-between items-center">
+                      <span>{stage.label}</span>
+                      <motion.span
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="text-xs px-2 py-1 rounded-full bg-[var(--panel-strong)] text-[var(--muted)]"
+                      >
+                        {stageProjects.length}
+                      </motion.span>
+                    </h2>
 
-                  <motion.div
-                    layout
-                    className="space-y-3 min-h-[200px] rounded-2xl bg-[var(--lane-surface)] border border-[var(--border)] p-4 shadow-[inset_0_1px_0_var(--inset-highlight)]"
-                  >
-                    <AnimatePresence mode="popLayout">
-                      {stageProjects.length > 0 ? (
-                        stageProjects.map((project) => (
-                          <ProjectCard
-                            key={project.id}
-                            project={project}
-                            progress={getProjectProgress(project)}
-                            onMove={(direction) => handleMoveProject(project.id, direction)}
-                            onDelete={() => deleteProject(project.id)}
-                            members={board.members as BoardMemberInfo[] | undefined}
-                            onAssignProject={(userId) => handleAssignProject(project.id, userId)}
-                            boardId={board.id}
-                          />
-                        ))
-                      ) : (
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="text-[var(--muted)] text-xs text-center py-8"
+                    <StageDropZone id={`stage:${stage.key}`}>
+                      {(isOver) => (
+                        <div
+                          className={`space-y-3 min-h-[200px] rounded-2xl bg-[var(--lane-surface)] border p-4 shadow-[inset_0_1px_0_var(--inset-highlight)] transition-colors ${
+                            isOver
+                              ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                              : 'border-[var(--border)]'
+                          }`}
                         >
-                          No projects here yet
-                        </motion.div>
+                          <AnimatePresence mode="popLayout">
+                            {stageProjects.length > 0 ? (
+                              stageProjects.map((project) => (
+                                <DraggableProjectCard
+                                  key={project.id}
+                                  project={project}
+                                  progress={getProjectProgress(project)}
+                                  onMove={(direction) => handleMoveProject(project.id, direction)}
+                                  onDelete={() => handleDeleteProject(project.id)}
+                                  members={board.members as BoardMemberInfo[] | undefined}
+                                  onAssignProject={(userId) => handleAssignProject(project.id, userId)}
+                                  boardId={board.id}
+                                  isCompleting={completingProjectIds.has(project.id)}
+                                />
+                              ))
+                            ) : (
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="text-[var(--muted)] text-xs text-center py-8"
+                              >
+                                Drop projects here
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       )}
-                    </AnimatePresence>
-                  </motion.div>
+                    </StageDropZone>
+                  </div>
+                </motion.div>
+              );
+            })}
+
+          </div>
+          <DragOverlay dropAnimation={{
+            duration: 180,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          }}>
+            {activeDragProjectId ? (() => {
+              const activeProject = activeProjects.find((project) => project.id === activeDragProjectId);
+              if (!activeProject) return null;
+
+              return (
+                <div className="w-[min(28rem,calc(100vw-3rem))] cursor-grabbing drop-shadow-[0_18px_42px_rgba(17,17,17,0.18)]">
+                  <ProjectCard
+                    project={activeProject}
+                    progress={getProjectProgress(activeProject)}
+                    onMove={() => {}}
+                    onDelete={() => {}}
+                    members={board.members as BoardMemberInfo[] | undefined}
+                    onAssignProject={undefined}
+                    boardId={board.id}
+                    disableLayoutAnimation
+                    nextActionLabel={activeProject.stage === 'review' ? 'Complete project' : `Move to ${STAGE_LABELS[getNextStage(activeProject.stage)]}`}
+                    nextActionIcon={activeProject.stage === 'review' ? '🔥' : '→'}
+                  />
                 </div>
-              </motion.div>
-            );
-          })}
-        </div>
+              );
+            })() : null}
+          </DragOverlay>
+        </DndContext>
       </div>
     </div>
   );

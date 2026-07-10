@@ -18,6 +18,8 @@ export default function AssigneeSelector({ members, assigneeId, onAssign, size =
 
   const assignee = assigneeId ? members.find((m) => m.userId === assigneeId) : null;
   const avatarSize = size === 'sm' ? 'w-5 h-5 text-[10px]' : 'w-7 h-7 text-xs';
+  const assignedPadding = size === 'sm' ? 'p-0.5' : 'py-1 pl-1 pr-2';
+  const unassignedPadding = size === 'sm' ? 'p-1' : 'py-1 px-2';
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -44,9 +46,9 @@ export default function AssigneeSelector({ members, assigneeId, onAssign, size =
         }}
         className={`flex items-center gap-1.5 rounded-full border transition-all duration-200 ${
           assignee
-            ? 'bg-[var(--accent-soft)] border-[var(--accent)]/20 pr-2'
-            : 'bg-[var(--panel-strong)] border-[var(--border)] hover:border-[var(--accent)]/30 px-2'
-        } ${size === 'sm' ? 'py-0.5' : 'py-1'}`}
+            ? `bg-[var(--accent-soft)] border-[var(--accent)]/20 ${assignedPadding}`
+            : `bg-[var(--panel-strong)] border-[var(--border)] hover:border-[var(--accent)]/30 ${unassignedPadding}`
+        }`}
         title={assignee ? `Assigned to ${assignee.name}` : label}
       >
         {assignee ? (

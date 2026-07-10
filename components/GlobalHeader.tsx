@@ -14,8 +14,9 @@ export default function GlobalHeader() {
   // Hide on pages that have their own UserMenu in header
   const isHomePage = pathname === '/';
   const isBoardPage = pathname?.startsWith('/board/');
+  const isProjectPage = pathname?.startsWith('/project/');
   
-  if (isHomePage || isBoardPage) {
+  if (isHomePage || isBoardPage || isProjectPage) {
     return null;
   }
   

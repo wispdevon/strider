@@ -5,46 +5,7 @@
 import { getDb } from './db-core';
 import type { Project, ProjectRow, Subtask } from './types';
 
-// Project functions
-export function getProjectsByBoardId(boardId: string): Project[] {
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY created_at DESC').all(boardId) as ProjectRow[];
-
-  return rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    note: row.note,
-    stage: row.stage,
-    category: row.category,
-    subtasks: JSON.parse(row.subtasks) as Subtask[],
-    boardId: row.board_id,
-    assigneeId: row.assignee_id ?? null
-  }));
-}
-
-export function getAllProjects(): Project[] {
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
-
-  return rows.map((row) => ({
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    note: row.note,
-    stage: row.stage,
-    category: row.category,
-    subtasks: JSON.parse(row.subtasks) as Subtask[],
-    boardId: row.board_id,
-    assigneeId: row.assignee_id ?? null
-  }));
-}
-
-export function getProjectById(id: string): Project | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
-  if (!row) return null;
-
+function mapProjectRow(row: ProjectRow): Project {
   return {
     id: row.id,
     slug: row.slug,
@@ -54,8 +15,32 @@ export function getProjectById(id: string): Project | null {
     category: row.category,
     subtasks: JSON.parse(row.subtasks) as Subtask[],
     boardId: row.board_id,
-    assigneeId: row.assignee_id ?? null
+    assigneeId: row.assignee_id ?? null,
+    completedAt: row.completed_at ?? null
   };
+}
+
+// Project functions
+export function getProjectsByBoardId(boardId: string): Project[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY created_at DESC').all(boardId) as ProjectRow[];
+
+  return rows.map(mapProjectRow);
+}
+
+export function getAllProjects(): Project[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
+
+  return rows.map(mapProjectRow);
+}
+
+export function getProjectById(id: string): Project | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
+  if (!row) return null;
+
+  return mapProjectRow(row);
 }
 
 /**
@@ -89,13 +74,14 @@ export function createProject(
     stage: input.stage,
     category: input.category || 'General',
     subtasks: subtasks.length > 0 ? subtasks : [{ id: `sub-${Date.now()}`, title: 'First milestone', done: false }],
-    boardId: input.boardId
+    boardId: input.boardId,
+    completedAt: input.stage === 'done' ? new Date().toISOString() : null
   };
 
   const db = getDb();
   db.prepare(`
-    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id)
-    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId)
+    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id, completed_at)
+    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId, @completedAt)
   `).run({
     id: project.id,
     slug: project.slug,
@@ -104,7 +90,8 @@ export function createProject(
     stage: project.stage,
     category: project.category,
     subtasks: JSON.stringify(project.subtasks),
-    boardId: project.boardId
+    boardId: project.boardId,
+    completedAt: project.completedAt
   });
 
   return project;
@@ -115,10 +102,13 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
   if (!current) return null;
 
   const merged = { ...current, ...updates };
+  const completedAt = merged.stage === 'done'
+    ? (updates.completedAt !== undefined ? updates.completedAt : current.completedAt ?? new Date().toISOString())
+    : null;
   const db = getDb();
   db.prepare(`
     UPDATE projects
-    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId
+    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId, completed_at = @completedAt
     WHERE id = @id
   `).run({
     id,
@@ -128,10 +118,11 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
     stage: merged.stage,
     category: merged.category,
     subtasks: JSON.stringify(merged.subtasks),
-    assigneeId: merged.assigneeId ?? null
+    assigneeId: merged.assigneeId ?? null,
+    completedAt
   });
 
-  return merged;
+  return { ...merged, completedAt };
 }
 
 /**

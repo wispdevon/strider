@@ -272,6 +272,7 @@ function initializeDb() {
       subtasks TEXT NOT NULL DEFAULT '[]',
       board_id TEXT NOT NULL,
       assignee_id TEXT,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
       FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
@@ -283,6 +284,16 @@ function initializeDb() {
     const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
     if (columns.length > 0 && !columns.some(col => col.name === 'assignee_id')) {
       db.exec(`ALTER TABLE projects ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE SET NULL`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add completed_at column if it doesn't exist (completion history)
+  try {
+    const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+    if (columns.length > 0 && !columns.some(col => col.name === 'completed_at')) {
+      db.exec(`ALTER TABLE projects ADD COLUMN completed_at TEXT`);
     }
   } catch {
     // Column might already exist, ignore

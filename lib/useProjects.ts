@@ -19,6 +19,7 @@ export interface Project {
   subtasks: Subtask[];
   boardId?: string;
   assigneeId?: string | null;
+  completedAt?: string | null;
 }
 
 export interface BoardMemberInfo {
@@ -37,8 +38,14 @@ export function useProjects(boardId?: string) {
     let cancelled = false;
 
     const loadProjects = async () => {
+      if (!boardId) {
+        setProjects([]);
+        setIsLoaded(true);
+        return;
+      }
+
       try {
-        const url = boardId ? `/api/projects?boardId=${encodeURIComponent(boardId)}` : '/api/projects';
+        const url = `/api/projects?boardId=${encodeURIComponent(boardId)}`;
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load projects');
         const data = (await response.json()) as Project[];

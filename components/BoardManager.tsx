@@ -154,7 +154,6 @@ export default function BoardManager() {
           </div>
 
           <div className="flex items-center gap-3">
-            <UserMenu />
             <FriendsList />
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -178,6 +177,7 @@ export default function BoardManager() {
               <span aria-hidden="true">+</span>
               <span className="hidden sm:inline">New Board</span>
             </motion.button>
+            <UserMenu />
           </div>
         </div>
       </motion.header>

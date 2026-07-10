@@ -2,12 +2,51 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { useProjects } from '@/lib/useProjects';
+import { useCallback, useEffect, useState } from 'react';
+import { Project, useProjects } from '@/lib/useProjects';
 
-export default function HallOfFame() {
-  const { projects, isLoaded, getProjectProgress } = useProjects();
+interface HallOfFameProps {
+  boardSlug?: string;
+}
 
-  if (!isLoaded) {
+interface BoardHistory {
+  name: string;
+  slug: string;
+  projects: Project[];
+}
+
+function formatCompletedDate(value?: string | null) {
+  if (!value) return 'Completed before history tracking';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+export default function HallOfFame({ boardSlug }: HallOfFameProps) {
+  const { projects, isLoaded } = useProjects();
+  const [board, setBoard] = useState<BoardHistory | null>(null);
+  const [boardLoaded, setBoardLoaded] = useState(!boardSlug);
+
+  const loadBoard = useCallback(async () => {
+    if (!boardSlug) return;
+    try {
+      const response = await fetch(`/api/boards/${boardSlug}`);
+      if (response.ok) {
+        const data = await response.json() as BoardHistory;
+        setBoard(data);
+      }
+    } finally {
+      setBoardLoaded(true);
+    }
+  }, [boardSlug]);
+
+  useEffect(() => {
+    void loadBoard();
+  }, [loadBoard]);
+
+  if ((boardSlug && !boardLoaded) || (!boardSlug && !isLoaded)) {
     return (
       <div className="flex items-center justify-center h-screen">
         <motion.div
@@ -21,7 +60,11 @@ export default function HallOfFame() {
     );
   }
 
-  const doneProjects = projects.filter((p) => p.stage === 'done');
+  const sourceProjects = boardSlug ? board?.projects ?? [] : projects;
+  const doneProjects = sourceProjects
+    .filter((p) => p.stage === 'done')
+    .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+  const backHref = boardSlug ? `/board/${boardSlug}` : '/';
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -33,7 +76,7 @@ export default function HallOfFame() {
       >
         <div className="max-w-5xl mx-auto px-6 py-4">
           <Link
-            href="/"
+            href={backHref}
             className="text-[var(--accent)] hover:text-[var(--accent)]/80 text-sm font-medium transition-colors mb-3 inline-flex items-center gap-1"
           >
             ← Back to board
@@ -42,7 +85,9 @@ export default function HallOfFame() {
             <span className="text-4xl">🏆</span>
             <div>
               <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">Completed Projects</p>
-              <h1 className="hero-title text-[var(--foreground)] text-3xl md:text-4xl mt-1">Hall of Fame</h1>
+              <h1 className="hero-title text-[var(--foreground)] text-3xl md:text-4xl mt-1">
+                {board?.name ? `${board.name} Hall of Fame` : 'Hall of Fame'}
+              </h1>
             </div>
           </div>
         </div>
@@ -64,7 +109,6 @@ export default function HallOfFame() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence mode="popLayout">
               {doneProjects.map((project, index) => {
-                const progress = getProjectProgress(project);
                 const completedSubtasks = project.subtasks.filter((s) => s.done).length;
 
                 return (
@@ -106,6 +150,9 @@ export default function HallOfFame() {
                         </div>
                         <p className="text-[var(--muted)] text-xs">
                           {completedSubtasks} subtasks completed
+                        </p>
+                        <p className="text-[var(--muted)] text-xs mt-2">
+                          {formatCompletedDate(project.completedAt)}
                         </p>
                       </motion.div>
                     </Link>

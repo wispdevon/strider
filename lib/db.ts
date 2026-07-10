@@ -12,13 +12,13 @@
  */
 
 // Re-export all types
-export type { Subtask, Project, Board, BoardWithProjects, User, PasskeyCredential, BoardRow, ProjectRow, UserRow, PasskeyRow, BoardMember, BoardMemberRow } from './types';
+export type { Subtask, Project, Board, BoardWithProjects, User, PasskeyCredential, BoardRow, ProjectRow, UserRow, PasskeyRow, BoardMember, BoardMemberRow, Friendship, FriendshipRow } from './types';
 
 // Re-export core functions
 export { getDb, generateCode, generatePin, hashPassword } from './db-core';
 
 // Re-export user functions
-export { createUser, getUserById, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId } from './users';
+export { createUser, getUserById, getUserByFriendCode, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship } from './users';
 
 // Re-export board functions
 export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember } from './boards';

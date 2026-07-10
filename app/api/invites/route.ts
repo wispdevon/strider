@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { createBoardInvite, getBoardInvitesToUser } from '@/lib/db';
-import { getUserByFriendCode } from '@/lib/users';
+import { getUserByFriendCode, getAvatarSeed } from '@/lib/users';
 import { getBoardBySlug } from '@/lib/boards';
+import { generateAvatarFromSeed } from '@/lib/avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,12 @@ export async function GET() {
   }
 
   const invites = getBoardInvitesToUser(session.userId);
-  return NextResponse.json(invites);
+  // Add avatars to each invite
+  const invitesWithAvatars = invites.map((invite: any) => ({
+    ...invite,
+    fromUserAvatar: generateAvatarFromSeed(getAvatarSeed(invite.fromUserId)),
+  }));
+  return NextResponse.json(invitesWithAvatars);
 }
 
 // Create a board invite (invite a friend to a board)

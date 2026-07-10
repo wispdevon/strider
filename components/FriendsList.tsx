@@ -4,19 +4,20 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
-import { generateAvatarDataUri } from '@/lib/avatar';
 
 interface Friend {
   id: string;
   name: string;
   friendCode: string;
   status: string;
+  avatar?: string;
 }
 
 interface PendingRequest {
   id: string;
   name: string;
   friendCode: string;
+  avatar?: string;
 }
 
 interface BoardInvite {
@@ -27,6 +28,7 @@ interface BoardInvite {
   fromUserId: string;
   fromUserName: string;
   fromFriendCode: string;
+  fromUserAvatar?: string;
   createdAt: string;
   fromUser?: {
     id: string;
@@ -168,11 +170,10 @@ export default function FriendsList() {
   const hasBoardInvites = boardInvites.length > 0;
 
   // Avatar component for consistent rendering
-  const Avatar = ({ userId, name, size = 32 }: { userId: string; name: string; size?: number }) => (
+  const Avatar = ({ src, name, size = 32 }: { src?: string; name: string; size?: number }) => (
     <img
-      src={generateAvatarDataUri(userId, size)}
+      src={src || `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${size * 0.22}" fill="#78909C"/></svg>`)}`}
       alt={name}
-      className={`w-${size/8} h-${size/8} rounded-full`}
       style={{ width: size, height: size, borderRadius: '50%' }}
     />
   );
@@ -296,7 +297,7 @@ export default function FriendsList() {
                       <div className="space-y-2">
                         {incomingRequests.map((request) => (
                           <div key={request.id} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)]">
-                            <Avatar userId={`friend-${request.id}`} name={request.name} size={32} />
+                            <Avatar src={request.avatar} name={request.name} size={32} />
                             <div className="flex-1 min-w-0">
                               <span className="text-sm text-[var(--foreground)] block truncate">{request.name}</span>
                               <span className="text-xs text-[var(--muted)] font-mono">{request.friendCode}</span>
@@ -332,7 +333,7 @@ export default function FriendsList() {
                       <div className="space-y-2">
                         {outgoingRequests.map((request) => (
                           <div key={request.friendCode} className="flex items-center gap-2 p-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] opacity-70">
-                            <Avatar userId={`friend-${request.friendCode}`} name={request.name} size={32} />
+                            <Avatar src={request.avatar} name={request.name} size={32} />
                             <div className="flex-1 min-w-0">
                               <span className="text-sm text-[var(--foreground)] block truncate">{request.name}</span>
                               <span className="text-xs text-[var(--muted)] font-mono">{request.friendCode}</span>
@@ -355,7 +356,7 @@ export default function FriendsList() {
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {friends.map((friend) => (
                           <div key={friend.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-[var(--panel-strong)]">
-                            <Avatar userId={friend.id} name={friend.name} size={32} />
+                            <Avatar src={friend.avatar} name={friend.name} size={32} />
                             <span className="text-sm text-[var(--foreground)]">{friend.name}</span>
                             <span className="ml-auto text-xs text-[var(--muted)] font-mono">{friend.friendCode}</span>
                           </div>
@@ -379,7 +380,7 @@ export default function FriendsList() {
                         <div key={invite.id} className="p-3 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)]">
                           <div className="flex items-start justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <Avatar userId={invite.fromUserId} name={invite.fromUserName} size={28} />
+                              <Avatar src={invite.fromUserAvatar} name={invite.fromUserName} size={28} />
                               <div>
                                 <span className="text-sm font-medium text-[var(--foreground)] block">{invite.fromUserName}</span>
                                 <span className="text-xs text-[var(--muted)]">invited you to</span>

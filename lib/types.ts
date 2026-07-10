@@ -87,6 +87,9 @@ export interface UserRow {
   name: string;
   email: string | null;
   friend_code: string;
+  avatar_rerolls: number;
+  avatar_rerolls_date: string | null;
+  avatar_seed: string | null;
   created_at: string;
 }
 

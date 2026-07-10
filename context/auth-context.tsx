@@ -8,6 +8,9 @@ interface User {
   email: string | null;
   friendCode: string;
   avatar: string;
+  avatarRerolls: number;
+  avatarRerollsRemaining: number;
+  avatarRerollsUnlimited: boolean;
 }
 
 interface AuthContextType {
@@ -20,6 +23,7 @@ interface AuthContextType {
   verifyRegistration: (userId: string, credential: any) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
+  rerollAvatar: (option?: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -32,6 +36,7 @@ const AuthContext = createContext<AuthContextType>({
   verifyRegistration: async () => false,
   logout: async () => {},
   refreshAuth: async () => {},
+  rerollAvatar: async () => ({ success: false }),
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -145,6 +150,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRefreshCounter(c => c + 1);
   }, []);
 
+  const rerollAvatar = useCallback(async () => {
+    console.log('[AuthContext] rerollAvatar called');
+    try {
+      const response = await fetch('/api/auth/avatar', { method: 'POST' });
+      console.log('[AuthContext] rerollAvatar response status:', response.status);
+      
+      if (!response.ok) {
+        const data = await response.json();
+        console.error('[AuthContext] rerollAvatar failed:', data);
+        return { success: false, error: data.error || 'Failed to reroll avatar' };
+      }
+      
+      const data = await response.json();
+      console.log('[AuthContext] rerollAvatar success, refreshing session...');
+      await checkSession();
+      return { success: true };
+    } catch (err) {
+      console.error('[AuthContext] rerollAvatar error:', err);
+      return { success: false, error: 'Failed to reroll avatar' };
+    }
+  }, [checkSession]);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -156,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyRegistration,
       logout,
       refreshAuth,
+      rerollAvatar,
     }}>
       {children}
     </AuthContext.Provider>

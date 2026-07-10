@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { startLogin, verifyLogin } from '@/lib/auth';
 import { createSession } from '@/lib/session';
 import { getUserById } from '@/lib/users';
-import { generateAvatarDataUri } from '@/lib/avatar';
+import { generateAvatarFromSeed } from '@/lib/avatar';
+import { getAvatarSeed } from '@/lib/users';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ export async function PUT(request: Request) {
         id: user.id,
         name: user.name,
         email: user.email,
-        avatar: generateAvatarDataUri(user.id),
+        avatar: generateAvatarFromSeed(getAvatarSeed(user.id)),
       },
     });
   } catch (error: any) {

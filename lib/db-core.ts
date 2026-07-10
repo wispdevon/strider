@@ -64,9 +64,45 @@ function initializeDb() {
       name TEXT NOT NULL,
       email TEXT,
       friend_code TEXT UNIQUE NOT NULL,
+      avatar_rerolls INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Add avatar_rerolls column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'avatar_rerolls')) {
+      db.exec(`ALTER TABLE users ADD COLUMN avatar_rerolls INTEGER NOT NULL DEFAULT 0`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add avatar_seed column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'avatar_seed')) {
+      db.exec(`ALTER TABLE users ADD COLUMN avatar_seed TEXT`);
+      // Set default seed to user id for existing users
+      const users = db.prepare("SELECT id FROM users").all() as Array<{ id: string }>;
+      for (const u of users) {
+        db.prepare("UPDATE users SET avatar_seed = ? WHERE id = ?").run(u.id, u.id);
+      }
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add avatar_rerolls_date column if it doesn't exist (migration for daily reset)
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'avatar_rerolls_date')) {
+      db.exec(`ALTER TABLE users ADD COLUMN avatar_rerolls_date TEXT`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
 
   // Passkey credentials table
   db.exec(`

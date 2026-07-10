@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, getUserByFriendCode, updateFriendshipStatus } from '@/lib/db';
+import { getAvatarSeed } from '@/lib/users';
+import { generateAvatarFromSeed } from '@/lib/avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,17 +22,20 @@ export async function GET() {
       id: f.friend.id,
       name: f.friend.name,
       friendCode: f.friend.friendCode,
-      status: f.status
+      status: f.status,
+      avatar: generateAvatarFromSeed(getAvatarSeed(f.friend.id))
     })),
     incomingRequests: incomingRequests.map(r => ({
       id: r.id,
       name: r.user.name,
-      friendCode: r.user.friendCode
+      friendCode: r.user.friendCode,
+      avatar: generateAvatarFromSeed(getAvatarSeed(r.user.id))
     })),
     outgoingRequests: outgoingRequests.map(r => ({
       id: r.friend.id,
       name: r.friend.name,
-      friendCode: r.friend.friendCode
+      friendCode: r.friend.friendCode,
+      avatar: generateAvatarFromSeed(getAvatarSeed(r.friend.id))
     }))
   });
 }

@@ -3,7 +3,8 @@ import { getBoardBySlug, updateBoard, deleteBoard, verifyAuthorPin, getBoardMemb
 import { getUserById } from '@/lib/users';
 import { getSession } from '@/lib/session';
 import { getBoardByJoinCode, getAllBoards } from '@/lib/db';
-import { generateAvatarDataUri } from '@/lib/avatar';
+import { generateAvatarFromSeed } from '@/lib/avatar';
+import { getAvatarSeed } from '@/lib/users';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return {
       ...member,
       name: user?.name || 'Unknown',
-      avatar: user ? generateAvatarDataUri(user.id) : null
+      avatar: user ? generateAvatarFromSeed(getAvatarSeed(user.id)) : null
     };
   });
 

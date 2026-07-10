@@ -18,7 +18,7 @@ export type { Subtask, Project, Board, BoardWithProjects, User, PasskeyCredentia
 export { getDb, generateCode, generatePin, hashPassword } from './db-core';
 
 // Re-export user functions
-export { createUser, getUserById, getUserByFriendCode, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship } from './users';
+export { createUser, getUserById, getUserByFriendCode, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship, getAvatarRerolls, incrementAvatarReroll, getAvatarSeed, setAvatarSeed, hasUnlimitedRerolls, getAvatarRerollsRemaining, MAX_DAILY_REROLLS } from './users';
 
 // Re-export board functions
 export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember, createBoardInvite, getBoardInvitesToUser, getBoardInvitesFromUser, acceptBoardInvite, declineBoardInvite, cancelBoardInvite, isInvitedToBoard } from './boards';

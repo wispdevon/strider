@@ -299,6 +299,79 @@ export function updateFriendshipStatus(userId: string, friendId: string, status:
   return result.changes > 0;
 }
 
+// Maximum daily avatar rerolls for normal users
+export const MAX_DAILY_REROLLS = 5;
+
+// Usernames that get unlimited avatar rerolls
+const UNLIMITED_REROLL_USERS = ['wisp'];
+
+/**
+ * Returns today's date string (YYYY-MM-DD) in UTC for consistent daily reset.
+ */
+function getTodayDateString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Check if a user has unlimited avatar rerolls (by username).
+ */
+export function hasUnlimitedRerolls(userId: string): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string } | undefined;
+  if (!row) return false;
+  return UNLIMITED_REROLL_USERS.includes(row.name.toLowerCase());
+}
+
+/**
+ * Get the number of avatar rerolls used today (resets daily).
+ * If the stored date doesn't match today, the counter is reset to 0.
+ */
+export function getAvatarRerolls(userId: string): number {
+  const db = getDb();
+  const row = db.prepare('SELECT avatar_rerolls, avatar_rerolls_date FROM users WHERE id = ?').get(userId) as { avatar_rerolls: number; avatar_rerolls_date: string | null } | undefined;
+  if (!row) return 0;
+
+  const today = getTodayDateString();
+  if (row.avatar_rerolls_date !== today) {
+    // New day — reset the counter
+    db.prepare('UPDATE users SET avatar_rerolls = 0, avatar_rerolls_date = ? WHERE id = ?').run(today, userId);
+    return 0;
+  }
+
+  return row.avatar_rerolls ?? 0;
+}
+
+/**
+ * Get the number of avatar rerolls remaining for today.
+ * Returns Infinity for users with unlimited rerolls.
+ */
+export function getAvatarRerollsRemaining(userId: string): number {
+  if (hasUnlimitedRerolls(userId)) {
+    return Infinity;
+  }
+  const used = getAvatarRerolls(userId);
+  return Math.max(0, MAX_DAILY_REROLLS - used);
+}
+
+export function incrementAvatarReroll(userId: string): boolean {
+  const db = getDb();
+  const today = getTodayDateString();
+  const result = db.prepare('UPDATE users SET avatar_rerolls = avatar_rerolls + 1, avatar_rerolls_date = ? WHERE id = ?').run(today, userId);
+  return result.changes > 0;
+}
+
+export function getAvatarSeed(userId: string): string {
+  const db = getDb();
+  const row = db.prepare('SELECT avatar_seed FROM users WHERE id = ?').get(userId) as { avatar_seed: string | null } | undefined;
+  return row?.avatar_seed ?? userId;
+}
+
+export function setAvatarSeed(userId: string, seed: string): boolean {
+  const db = getDb();
+  const result = db.prepare('UPDATE users SET avatar_seed = ? WHERE id = ?').run(seed, userId);
+  return result.changes > 0;
+}
+
 export function deleteFriendship(userId: string, friendId: string): boolean {
   const db = getDb();
   const result = db.prepare(

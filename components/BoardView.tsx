@@ -153,7 +153,7 @@ function DraggableProjectCard({
       style={style}
       {...attributes}
       {...listeners}
-      className="cursor-grab touch-none select-none active:cursor-grabbing"
+      className="w-[min(18rem,80vw)] shrink-0 cursor-grab touch-none select-none active:cursor-grabbing md:w-auto"
     >
       <ProjectCard
         project={project}
@@ -833,7 +833,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     <StageDropZone id={`stage:${stage.key}`}>
                       {(isOver) => (
                         <div
-                          className={`space-y-3 min-h-[200px] rounded-2xl bg-[var(--lane-surface)] border p-4 shadow-[inset_0_1px_0_var(--inset-highlight)] transition-colors ${
+                          className={`flex min-h-[200px] gap-3 overflow-x-auto overscroll-x-contain rounded-2xl bg-[var(--lane-surface)] border p-4 pb-5 shadow-[inset_0_1px_0_var(--inset-highlight)] transition-colors md:block md:space-y-3 md:overflow-visible md:pb-4 ${
                             isOver
                               ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
                               : 'border-[var(--border)]'
@@ -858,7 +858,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                               <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
-                                className="text-[var(--muted)] text-xs text-center py-8"
+                                className="w-full text-[var(--muted)] text-xs text-center py-8"
                               >
                                 Drop projects here
                               </motion.div>

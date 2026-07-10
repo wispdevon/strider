@@ -111,7 +111,7 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid grid-cols-[auto_auto_minmax(0,1fr)_auto_auto] items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border transition-all duration-300 ${
+      className={`grid min-w-[40rem] grid-cols-[auto_auto_minmax(18rem,1fr)_auto_auto] items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border transition-all duration-300 ${
         subtask.done
           ? 'bg-[#ecebe7] border-[#b3b2ae] text-[#3f3f3f]'
           : 'bg-[var(--panel)] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--panel-strong)]'
@@ -473,7 +473,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
               onDragEnd={handleDragEnd}
             >
               <SortableContext items={project.subtasks.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
+                <div className="space-y-2 overflow-x-auto overscroll-x-contain pb-2">
                   <AnimatePresence mode="popLayout">
                     {project.subtasks.map((subtask) => (
                       <SortableSubtask

@@ -16,21 +16,22 @@ function mapProjectRow(row: ProjectRow): Project {
     subtasks: JSON.parse(row.subtasks) as Subtask[],
     boardId: row.board_id,
     assigneeId: row.assignee_id ?? null,
-    completedAt: row.completed_at ?? null
+    completedAt: row.completed_at ?? null,
+    sortOrder: row.sort_order ?? 0
   };
 }
 
 // Project functions
 export function getProjectsByBoardId(boardId: string): Project[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY created_at DESC').all(boardId) as ProjectRow[];
+  const rows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY sort_order ASC, created_at DESC').all(boardId) as ProjectRow[];
 
   return rows.map(mapProjectRow);
 }
 
 export function getAllProjects(): Project[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
+  const rows = db.prepare('SELECT * FROM projects ORDER BY sort_order ASC, created_at DESC').all() as ProjectRow[];
 
   return rows.map(mapProjectRow);
 }
@@ -75,13 +76,14 @@ export function createProject(
     category: input.category || 'General',
     subtasks: subtasks.length > 0 ? subtasks : [{ id: `sub-${Date.now()}`, title: 'First milestone', done: false }],
     boardId: input.boardId,
-    completedAt: input.stage === 'done' ? new Date().toISOString() : null
+    completedAt: input.stage === 'done' ? new Date().toISOString() : null,
+    sortOrder: Date.now()
   };
 
   const db = getDb();
   db.prepare(`
-    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id, completed_at)
-    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId, @completedAt)
+    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id, completed_at, sort_order)
+    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId, @completedAt, @sortOrder)
   `).run({
     id: project.id,
     slug: project.slug,
@@ -91,7 +93,8 @@ export function createProject(
     category: project.category,
     subtasks: JSON.stringify(project.subtasks),
     boardId: project.boardId,
-    completedAt: project.completedAt
+    completedAt: project.completedAt,
+    sortOrder: project.sortOrder
   });
 
   return project;
@@ -108,7 +111,7 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
   const db = getDb();
   db.prepare(`
     UPDATE projects
-    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId, completed_at = @completedAt
+    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId, completed_at = @completedAt, sort_order = @sortOrder
     WHERE id = @id
   `).run({
     id,
@@ -119,10 +122,11 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
     category: merged.category,
     subtasks: JSON.stringify(merged.subtasks),
     assigneeId: merged.assigneeId ?? null,
-    completedAt
+    completedAt,
+    sortOrder: merged.sortOrder ?? 0
   });
 
-  return { ...merged, completedAt };
+  return { ...merged, completedAt, sortOrder: merged.sortOrder ?? 0 };
 }
 
 /**

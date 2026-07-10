@@ -273,6 +273,7 @@ function initializeDb() {
       board_id TEXT NOT NULL,
       assignee_id TEXT,
       completed_at TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
       FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
@@ -294,6 +295,16 @@ function initializeDb() {
     const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
     if (columns.length > 0 && !columns.some(col => col.name === 'completed_at')) {
       db.exec(`ALTER TABLE projects ADD COLUMN completed_at TEXT`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add sort_order column if it doesn't exist (manual card ordering)
+  try {
+    const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+    if (columns.length > 0 && !columns.some(col => col.name === 'sort_order')) {
+      db.exec(`ALTER TABLE projects ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
     }
   } catch {
     // Column might already exist, ignore

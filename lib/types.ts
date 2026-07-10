@@ -20,6 +20,7 @@ export interface Project {
   boardId: string;
   assigneeId?: string | null;
   completedAt?: string | null;
+  sortOrder?: number;
 }
 
 export interface Board {
@@ -87,6 +88,7 @@ export interface ProjectRow {
   board_id: string;
   assignee_id: string | null;
   completed_at: string | null;
+  sort_order: number;
 }
 
 export interface UserRow {

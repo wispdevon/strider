@@ -13,10 +13,17 @@ interface BoardHistory {
   name: string;
   slug: string;
   projects: Project[];
+  members?: Array<{
+    id: string;
+    userId: string;
+    name: string;
+    avatar: string | null;
+    role: string;
+  }>;
 }
 
 function formatCompletedDate(value?: string | null) {
-  if (!value) return 'Completed before history tracking';
+  if (!value) return '';
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
@@ -63,106 +70,184 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
   const sourceProjects = boardSlug ? board?.projects ?? [] : projects;
   const doneProjects = sourceProjects
     .filter((p) => p.stage === 'done')
-    .sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+    .sort((a, b) => (a.completedAt || '').localeCompare(b.completedAt || ''));
+  const memberLookup = new Map((board?.members ?? []).map((member) => [member.userId, member]));
+  const userPodium = Array.from(
+    doneProjects.reduce((stats, project) => {
+      if (project.assigneeId) {
+        const current = stats.get(project.assigneeId) ?? {
+          userId: project.assigneeId,
+          name: memberLookup.get(project.assigneeId)?.name ?? 'Unknown',
+          completedTasks: 0,
+          completedSubtasks: 0,
+        };
+        current.completedTasks += 1;
+        stats.set(project.assigneeId, current);
+      }
+
+      for (const subtask of project.subtasks) {
+        if (!subtask.done || !subtask.assigneeId) continue;
+        const current = stats.get(subtask.assigneeId) ?? {
+          userId: subtask.assigneeId,
+          name: memberLookup.get(subtask.assigneeId)?.name ?? 'Unknown',
+          completedTasks: 0,
+          completedSubtasks: 0,
+        };
+        current.completedSubtasks += 1;
+        stats.set(subtask.assigneeId, current);
+      }
+
+      return stats;
+    }, new Map<string, { userId: string; name: string; completedTasks: number; completedSubtasks: number }>())
+      .values()
+  )
+    .filter((user) => user.completedTasks > 0 || user.completedSubtasks > 0)
+    .sort((a, b) => b.completedTasks - a.completedTasks || b.completedSubtasks - a.completedSubtasks || a.name.localeCompare(b.name))
+    .slice(0, 3);
   const backHref = boardSlug ? `/board/${boardSlug}` : '/';
 
   return (
-    <div className="min-h-screen bg-transparent">
-      {/* Header */}
+    <div className="min-h-screen bg-black text-white">
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="border-b border-[var(--border)] bg-[var(--header-surface)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
+        className="sticky top-0 z-50 border-b border-white/12 bg-black/90 backdrop-blur-xl"
       >
-        <div className="max-w-5xl mx-auto px-6 py-4">
+        <div className="mx-auto max-w-5xl px-6 py-4 text-center">
           <Link
             href={backHref}
-            className="text-[var(--accent)] hover:text-[var(--accent)]/80 text-sm font-medium transition-colors mb-3 inline-flex items-center gap-1"
+            className="inline-flex items-center gap-1 text-sm font-medium text-white/70 transition-colors hover:text-white"
           >
             ← Back to board
           </Link>
-          <div className="flex items-center gap-3">
-            <span className="text-4xl">🏆</span>
-            <div>
-              <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">Completed Projects</p>
-              <h1 className="hero-title text-[var(--foreground)] text-3xl md:text-4xl mt-1">
-                {board?.name ? `${board.name} Hall of Fame` : 'Hall of Fame'}
-              </h1>
-            </div>
-          </div>
         </div>
       </motion.header>
 
-      {/* Content */}
-      <div className="max-w-5xl mx-auto px-6 py-12">
+      <main className="mx-auto max-w-5xl px-6 py-14">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-auto max-w-3xl text-center"
+        >
+          <p className="text-xs font-semibold uppercase tracking-[0.45em] text-white/55">
+            Completed Work
+          </p>
+          <h1 className="mt-5 text-5xl font-black uppercase leading-[0.92] tracking-normal text-white md:text-7xl">
+            The Road Behind Us
+          </h1>
+          <p className="mx-auto mt-6 max-w-xl text-base leading-7 text-white/62">
+            {board?.name ? `${board.name} records every finished task as a milestone.` : 'Every finished task becomes a milestone.'}
+          </p>
+        </motion.div>
+
         {doneProjects.length === 0 ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20"
+            className="py-24 text-center"
           >
-            <p className="text-6xl mb-4">🎯</p>
-            <h2 className="text-2xl font-semibold text-[var(--foreground)] mb-2">No completed projects yet</h2>
-            <p className="text-[var(--muted)]">Keep pushing forward — your first victory awaits!</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-white/40">No milestones yet</p>
+            <h2 className="mt-4 text-3xl font-black uppercase text-white">Nothing has crossed the line</h2>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence mode="popLayout">
+          <>
+            {userPodium.length > 0 && (
+              <motion.section
+                initial={{ opacity: 0, y: 28 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mx-auto mt-16 max-w-4xl text-center"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/45">
+                  Assigned Completion Leaders
+                </p>
+                <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3 md:items-end">
+                  {userPodium.map((user, index) => (
+                    <div
+                      key={user.userId}
+                      className={`border border-white/18 bg-black px-5 py-6 text-center ${
+                        index === 0 ? 'md:min-h-64' : index === 1 ? 'md:min-h-52' : 'md:min-h-44'
+                      }`}
+                    >
+                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white text-lg font-black uppercase">
+                        {user.name.charAt(0)}
+                      </div>
+                      <p className="mt-5 text-xs font-semibold uppercase tracking-[0.28em] text-white/45">
+                        #{index + 1}
+                      </p>
+                      <h2 className="mt-2 text-2xl font-black uppercase leading-none text-white">
+                        {user.name}
+                      </h2>
+                      <div className="mt-6 grid grid-cols-2 border-t border-white/14 pt-4 text-xs uppercase tracking-[0.16em] text-white/52">
+                        <div>
+                          <p className="text-xl font-black text-white">{user.completedTasks}</p>
+                          <p className="mt-1">Tasks</p>
+                        </div>
+                        <div>
+                          <p className="text-xl font-black text-white">{user.completedSubtasks}</p>
+                          <p className="mt-1">Subtasks</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.section>
+            )}
+
+            <div className="relative mx-auto mt-20 max-w-3xl">
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
+              <AnimatePresence mode="popLayout">
               {doneProjects.map((project, index) => {
                 const completedSubtasks = project.subtasks.filter((s) => s.done).length;
+                const totalSubtasks = project.subtasks.length;
+                const side = index % 2 === 0 ? 'md:pr-[55%]' : 'md:pl-[55%]';
 
                 return (
                   <motion.div
                     key={project.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ delay: index * 0.05 }}
+                    initial={{ opacity: 0, y: 32 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    transition={{ delay: index * 0.06 }}
+                    className={`relative mb-12 text-center ${side}`}
                   >
-                    <Link href={`/project/${project.slug}`}>
+                    <div className="absolute left-1/2 top-8 z-10 h-4 w-4 -translate-x-1/2 rounded-full border border-white bg-black shadow-[0_0_0_8px_rgba(255,255,255,0.06)]" />
+                    <Link href={`/project/${project.slug}?boardId=${encodeURIComponent(project.boardId || '')}`}>
                       <motion.div
-                        whileHover={{ scale: 1.02, y: -4 }}
-                        className="rounded-2xl bg-gradient-to-br from-[var(--panel)] to-[var(--panel-strong)] border border-[var(--border)] p-6 shadow-[0_18px_50px_rgba(17,17,17,0.06)] hover:shadow-[0_24px_60px_rgba(17,17,17,0.1)] transition-shadow"
+                        whileHover={{ y: -3 }}
+                        className="relative mx-auto max-w-sm border-y border-white/22 bg-black px-2 py-5 text-center transition-colors hover:border-white/70"
                       >
-                        {/* Trophy badge */}
-                        <div className="flex justify-between items-start mb-4">
-                          <span className="text-3xl">🏆</span>
-                          <span className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium">
-                            100% Complete
-                          </span>
+                        <div className="mb-3 flex items-center justify-center gap-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/45">
+                          <span>{String(index + 1).padStart(2, '0')}</span>
+                          <span className="h-px w-8 bg-white/25" />
+                          <span>{project.category}</span>
                         </div>
-
-                        {/* Project info */}
-                        <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold mb-1">
-                          {project.category}
-                        </p>
-                        <h3 className="hero-title text-[var(--foreground)] text-xl mb-2">{project.title}</h3>
-                        <p className="text-[var(--muted)] text-sm mb-4 line-clamp-2">{project.note}</p>
-
-                        {/* Progress bar */}
-                        <div className="h-2 bg-[var(--panel)] rounded-full overflow-hidden mb-2">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: '100%' }}
-                            transition={{ duration: 1, delay: index * 0.1 }}
-                            className="h-full bg-gradient-to-r from-green-400 to-emerald-500"
-                          />
+                        <h2 className="text-xl font-black uppercase leading-none text-white">
+                          {project.title}
+                        </h2>
+                        {project.note && (
+                          <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-white/56">
+                            {project.note}
+                          </p>
+                        )}
+                        <div className="mt-4 flex items-center justify-center gap-4 text-xs uppercase tracking-[0.14em] text-white/48">
+                          <div>
+                            <p className="text-white">{formatCompletedDate(project.completedAt) || 'Completed'}</p>
+                          </div>
+                          <span className="h-1 w-1 rounded-full bg-white/35" />
+                          <div>
+                            <p className="text-white">{completedSubtasks}/{totalSubtasks} subtasks</p>
+                          </div>
                         </div>
-                        <p className="text-[var(--muted)] text-xs">
-                          {completedSubtasks} subtasks completed
-                        </p>
-                        <p className="text-[var(--muted)] text-xs mt-2">
-                          {formatCompletedDate(project.completedAt)}
-                        </p>
                       </motion.div>
                     </Link>
                   </motion.div>
                 );
               })}
-            </AnimatePresence>
-          </div>
+              </AnimatePresence>
+            </div>
+          </>
         )}
-      </div>
+      </main>
     </div>
   );
 }

@@ -20,6 +20,7 @@ export interface Project {
   boardId?: string;
   assigneeId?: string | null;
   completedAt?: string | null;
+  sortOrder?: number;
 }
 
 export interface BoardMemberInfo {

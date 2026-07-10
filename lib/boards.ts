@@ -65,7 +65,7 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
   };
 
   // Inline project fetch to avoid circular dependency
-  const projectRows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY created_at DESC').all(board.id) as ProjectRow[];
+  const projectRows = db.prepare('SELECT * FROM projects WHERE board_id = ? ORDER BY sort_order ASC, created_at DESC').all(board.id) as ProjectRow[];
   const projects: Project[] = projectRows.map((projRow) => ({
     id: projRow.id,
     slug: projRow.slug,
@@ -76,7 +76,8 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
     subtasks: JSON.parse(projRow.subtasks) as Project['subtasks'],
     boardId: projRow.board_id,
     assigneeId: projRow.assignee_id ?? null,
-    completedAt: projRow.completed_at ?? null
+    completedAt: projRow.completed_at ?? null,
+    sortOrder: projRow.sort_order ?? 0
   }));
 
   return { ...board, projects };

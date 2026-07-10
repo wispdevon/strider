@@ -98,6 +98,16 @@ function isProjectInBoardStage(project: Project, stage: BoardStage) {
   return STAGES.find((item) => item.key === stage)?.accepts.includes(project.stage) ?? false;
 }
 
+function sortProjects(projects: Project[]) {
+  return [...projects].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+function exportFileName(name: string) {
+  const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const date = new Date().toISOString().slice(0, 10);
+  return `${slug || 'board'}-${date}.json`;
+}
+
 function StageDropZone({
   id,
   children,
@@ -142,6 +152,13 @@ function DraggableProjectCard({
     id: project.id,
     data: { projectId: project.id, stage: project.stage },
   });
+  const {
+    isOver,
+    setNodeRef: setDropNodeRef,
+  } = useDroppable({
+    id: `project:${project.id}`,
+    data: { projectId: project.id, stage: project.stage },
+  });
 
   const style = {
     position: 'relative' as const,
@@ -149,11 +166,16 @@ function DraggableProjectCard({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        setDropNodeRef(node);
+      }}
       style={style}
       {...attributes}
       {...listeners}
-      className="w-[min(18rem,80vw)] shrink-0 cursor-grab touch-none select-none active:cursor-grabbing md:w-auto"
+      className={`w-[min(18rem,80vw)] shrink-0 cursor-grab touch-none select-none active:cursor-grabbing md:w-auto ${
+        isOver && !isDragging ? 'rounded-2xl ring-2 ring-[var(--accent)]/25' : ''
+      }`}
     >
       <ProjectCard
         project={project}
@@ -303,6 +325,48 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     void updateProject(projectId, { stage });
   };
 
+  const reorderProjectsInStage = (projectId: string, targetProjectId: string) => {
+    const project = projects.find((item) => item.id === projectId);
+    const targetProject = projects.find((item) => item.id === targetProjectId);
+    if (!project || !targetProject || project.id === targetProject.id) return;
+
+    const targetStage = targetProject.stage;
+    const stageProjects = sortProjects(activeProjects.filter((item) => item.stage === targetStage));
+    const currentStageProjects = project.stage === targetStage
+      ? stageProjects
+      : sortProjects([...stageProjects, { ...project, stage: targetStage }]);
+    const oldIndex = currentStageProjects.findIndex((item) => item.id === projectId);
+    const targetIndex = currentStageProjects.findIndex((item) => item.id === targetProjectId);
+    if (oldIndex === -1 || targetIndex === -1) return;
+
+    const nextProjects = [...currentStageProjects];
+    const [movedProject] = nextProjects.splice(oldIndex, 1);
+    nextProjects.splice(targetIndex, 0, movedProject);
+
+    const orderedUpdates = nextProjects.map((item, index) => ({
+      id: item.id,
+      updates: {
+        stage: targetStage,
+        sortOrder: index + 1,
+      },
+    }));
+
+    setBoard((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        projects: current.projects.map((item) => {
+          const update = orderedUpdates.find((entry) => entry.id === item.id);
+          return update ? { ...item, ...update.updates } : item;
+        }),
+      };
+    });
+
+    for (const update of orderedUpdates) {
+      void updateProject(update.id, update.updates);
+    }
+  };
+
   const handleMoveProject = (projectId: string, direction: 'forward' | 'back') => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
@@ -330,6 +394,50 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     void deleteProject(projectId);
   };
 
+  const handleExportBoard = () => {
+    if (!board?.isOwner) return;
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      app: 'Strider',
+      version: 1,
+      board: {
+        id: board.id,
+        name: board.name,
+        emoji: board.emoji,
+        websiteUrl: board.websiteUrl,
+        slug: board.slug,
+        joinCode: board.joinCode,
+        ownerId: board.ownerId,
+        passkeyRequired: !!board.passkeyRequired,
+      },
+      members: board.members ?? [],
+      projects: sortProjects(projects).map((project) => ({
+        id: project.id,
+        slug: project.slug,
+        title: project.title,
+        note: project.note,
+        stage: project.stage,
+        category: project.category,
+        boardId: project.boardId,
+        assigneeId: project.assigneeId ?? null,
+        completedAt: project.completedAt ?? null,
+        sortOrder: project.sortOrder ?? 0,
+        subtasks: project.subtasks,
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = exportFileName(board.name);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragProjectId(String(event.active.id));
   };
@@ -342,6 +450,11 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     if (!targetId) return;
     const project = projects.find((item) => item.id === projectId);
     if (!project) return;
+
+    if (targetId.startsWith('project:')) {
+      reorderProjectsInStage(projectId, targetId.slice('project:'.length));
+      return;
+    }
 
     const targetStage = STAGES.find((stage) => `stage:${stage.key}` === targetId);
     if (!targetStage || isProjectInBoardStage(project, targetStage.key)) return;
@@ -736,10 +849,21 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                 </label>
 
                 <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-3">
-                  <p className="text-sm font-semibold text-[var(--foreground)]">Transfer ownership</p>
-                  <p className="text-xs text-[var(--muted)] mt-1">
-                    Transfer this board to an accepted friend. You will become an editor.
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--foreground)]">Transfer ownership</p>
+                      <p className="text-xs text-[var(--muted)] mt-1">
+                        Transfer this board to an accepted friend. You will become an editor.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExportBoard}
+                      className="shrink-0 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white shadow-[0_8px_18px_var(--accent-glow)] hover:bg-[var(--accent)]/90 transition-colors"
+                    >
+                      Export
+                    </button>
+                  </div>
                   <select
                     value={transferOwnerId}
                     onChange={(e) => {
@@ -809,7 +933,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         >
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {STAGES.map((stage, stageIndex) => {
-              const stageProjects = activeProjects.filter((p) => isProjectInBoardStage(p, stage.key));
+              const stageProjects = sortProjects(activeProjects.filter((p) => isProjectInBoardStage(p, stage.key)));
 
               return (
                 <motion.div

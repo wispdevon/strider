@@ -104,6 +104,16 @@ function initializeDb() {
     // Column might already exist, ignore
   }
 
+  // Add username_changed_date column if it doesn't exist (daily username change limit)
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'username_changed_date')) {
+      db.exec(`ALTER TABLE users ADD COLUMN username_changed_date TEXT`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
   // Passkey credentials table
   db.exec(`
     CREATE TABLE IF NOT EXISTS passkey_credentials (
@@ -150,6 +160,8 @@ function initializeDb() {
     CREATE TABLE IF NOT EXISTS boards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      emoji TEXT NOT NULL DEFAULT '📋',
+      website_url TEXT,
       slug TEXT UNIQUE NOT NULL,
       join_code TEXT UNIQUE NOT NULL,
       password_hash TEXT,
@@ -206,6 +218,26 @@ function initializeDb() {
     const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
     if (!columns.some(col => col.name === 'passkey_required')) {
       db.exec(`ALTER TABLE boards ADD COLUMN passkey_required INTEGER NOT NULL DEFAULT 0`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add emoji column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'emoji')) {
+      db.exec(`ALTER TABLE boards ADD COLUMN emoji TEXT NOT NULL DEFAULT '📋'`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add website_url column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'website_url')) {
+      db.exec(`ALTER TABLE boards ADD COLUMN website_url TEXT`);
     }
   } catch {
     // Column might already exist, ignore
@@ -284,11 +316,13 @@ function seedDefaultBoard() {
   const now = new Date().toISOString();
 
   db.prepare(`
-    INSERT INTO boards (id, name, slug, join_code, password_hash, author_pin, owner_id, created_at)
-    VALUES (@id, @name, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @createdAt)
+    INSERT INTO boards (id, name, emoji, website_url, slug, join_code, password_hash, author_pin, owner_id, created_at)
+    VALUES (@id, @name, @emoji, @websiteUrl, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @createdAt)
   `).run({
     id: defaultId,
     name: 'My Workspace',
+    emoji: '📋',
+    websiteUrl: null,
     slug: defaultSlug,
     joinCode: defaultJoinCode,
     passwordHash: null,

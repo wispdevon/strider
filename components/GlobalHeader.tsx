@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import FriendsList from './FriendsList';
 import UserMenu from './UserMenu';
 
 /**
@@ -19,8 +20,9 @@ export default function GlobalHeader() {
   }
   
   return (
-    <header className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.9)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]">
-      <div className="max-w-full mx-auto px-6 py-3 flex justify-end items-center">
+    <header className="border-b border-[var(--border)] bg-[var(--header-surface)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]">
+      <div className="max-w-full mx-auto px-6 py-3 flex justify-end items-center gap-3">
+        <FriendsList />
         <UserMenu />
       </div>
     </header>

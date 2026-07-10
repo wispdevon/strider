@@ -46,6 +46,11 @@ function getPalette(seed: string): string[] {
   return PALETTES[hashToNumber(seed, PALETTES.length)];
 }
 
+export function getAvatarAccentColor(seed: string): string {
+  const palette = getPalette(seed);
+  return palette[1] || palette[0] || '#4b5563';
+}
+
 // ─── Style: Beam (Boring Avatars inspired) ─────────────────────────
 // Layered geometric shapes on a rounded-square background.
 // Very popular in modern apps (Linear, Vercel, etc.)

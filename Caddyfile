@@ -3,7 +3,7 @@
 # Public site: boards.devonlabs.space  (automatic HTTPS via ACME)
 # Local network: boards.lan           (self-signed HTTPS via Caddy's internal CA)
 #
-# The Next.js server (npm start) must bind to 127.0.0.1:3000 (see below).
+# The Next.js server must bind to 127.0.0.1:4000 (see below).
 # Caddy terminates TLS and forwards X-Forwarded-* headers, which Strider's
 # rate limiter (proxy.ts) and secure session cookies rely on.
 
@@ -12,7 +12,7 @@ boards.devonlabs.space {
     encode zstd gzip
 
     # Forward real client IP + scheme so rate limiting and secure cookies work.
-    reverse_proxy 127.0.0.1:3000 {
+    reverse_proxy 127.0.0.1:4000 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up X-Real-IP {remote_host}
@@ -30,7 +30,7 @@ boards.lan {
 
     encode zstd gzip
 
-    reverse_proxy 127.0.0.1:3000 {
+    reverse_proxy 127.0.0.1:4000 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up X-Real-IP {remote_host}

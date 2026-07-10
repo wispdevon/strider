@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth-context";
 import GlobalHeader from "@/components/GlobalHeader";
@@ -37,8 +38,22 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${spaceGrotesk.variable} ${codeFont.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`
+            (() => {
+              try {
+                const stored = localStorage.getItem('strider-theme');
+                const theme = stored === 'dark' || stored === 'light'
+                  ? stored
+                  : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                document.documentElement.dataset.theme = theme;
+              } catch {}
+            })();
+          `}
+        </Script>
         <AuthProvider>
           <GlobalHeader />
           {children}

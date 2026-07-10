@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAllBoards, getBoardBySlug, updateBoard, deleteBoard, verifyAuthorPin, getBoardMembers } from '@/lib/db';
+import { getAllBoards, getBoardBySlug, updateBoard, transferBoardOwnership, deleteBoard, verifyAuthorPin, getBoardMembers, getFriendsByUserId } from '@/lib/db';
 import { getUserById } from '@/lib/users';
 import { getSession } from '@/lib/session';
 import { generateAvatarFromSeed } from '@/lib/avatar';
@@ -7,6 +7,23 @@ import { getAvatarSeed } from '@/lib/users';
 import { authorizeBoardRead } from '@/lib/board-access';
 
 export const dynamic = 'force-dynamic';
+
+function normalizeWebsiteUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new Error('Invalid website URL');
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 2048) throw new Error('Website URL is too long');
+
+  const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`;
+  const url = new URL(withProtocol);
+  if (url.protocol !== 'https:') {
+    throw new Error('Website URL must use HTTPS');
+  }
+  return url.toString();
+}
 
 // Get board details by slug or ID
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -42,14 +59,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   });
 }
 
-// Update board (name, password, passkeyRequired)
+// Update board settings or transfer ownership.
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const { name, password, passkeyRequired } = body;
+  const { name, emoji, websiteUrl, password, passkeyRequired, transferOwnerId } = body;
 
   // Get the board
   const board = getBoardBySlug(id) || getAllBoards().find(b => b.id === id);
@@ -70,15 +87,46 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.length > 120)) {
     return NextResponse.json({ error: 'Invalid board name' }, { status: 400 });
   }
+  if (emoji !== undefined && (typeof emoji !== 'string' || !emoji.trim() || emoji.trim().length > 16)) {
+    return NextResponse.json({ error: 'Invalid board emoji' }, { status: 400 });
+  }
+  let normalizedWebsiteUrl: string | null | undefined;
+  try {
+    normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid website URL' }, { status: 400 });
+  }
   if (password !== undefined && password !== null && (typeof password !== 'string' || password.length > 200)) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 400 });
   }
   if (passkeyRequired !== undefined && typeof passkeyRequired !== 'boolean') {
     return NextResponse.json({ error: 'Invalid passkey setting' }, { status: 400 });
   }
+  if (transferOwnerId !== undefined && (typeof transferOwnerId !== 'string' || !transferOwnerId)) {
+    return NextResponse.json({ error: 'Invalid transfer target' }, { status: 400 });
+  }
+
+  let transferred = false;
+  if (typeof transferOwnerId === 'string') {
+    const acceptedFriend = getFriendsByUserId(session.userId).some(
+      (friendship) => friendship.friend.id === transferOwnerId && friendship.status === 'accepted'
+    );
+
+    if (!acceptedFriend) {
+      return NextResponse.json({ error: 'Ownership can only be transferred to an accepted friend' }, { status: 403 });
+    }
+
+    const success = transferBoardOwnership(board.id, session.userId, transferOwnerId);
+    if (!success) {
+      return NextResponse.json({ error: 'Failed to transfer ownership' }, { status: 500 });
+    }
+    transferred = true;
+  }
 
   const updated = updateBoard(board.id, {
     name: typeof name === 'string' ? name.trim() : undefined,
+    emoji: typeof emoji === 'string' ? emoji.trim() : undefined,
+    websiteUrl: normalizedWebsiteUrl,
     password: password !== undefined ? password : undefined,
     passkeyRequired: passkeyRequired !== undefined ? passkeyRequired : undefined,
   });
@@ -90,10 +138,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({
     id: updated.id,
     name: updated.name,
+    emoji: updated.emoji,
+    websiteUrl: updated.websiteUrl,
     slug: updated.slug,
     joinCode: updated.joinCode,
     hasPassword: !!updated.passwordHash,
     passkeyRequired: updated.passkeyRequired,
+    ownerId: transferred ? transferOwnerId : updated.ownerId,
+    isOwner: !transferred,
     createdAt: updated.createdAt
   });
 }

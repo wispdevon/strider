@@ -7,6 +7,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Kanban project management app. Next.js 16.2.10 (App Router), React 19.2.4, TypeScript, Tailwind CSS 4 (@tailwindcss/postcss), SQLite (better-sqlite3, `data/strider.sqlite`), framer-motion 12, @dnd-kit/core+sortable.
 
+## Agent Behavior
+- If a command fails due to insufficient permissions, you must elevate the command to the user for approval.
+
 ## Structure
 ```
 app/                          # Next.js App Router

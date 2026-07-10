@@ -6,8 +6,8 @@ import ProjectCard from './ProjectCard';
 import { Project, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useState, useEffect } from 'react';
 import UserMenu from './UserMenu';
-import FriendsList from './FriendsList';
 import InviteFriendsModal from './InviteFriendsModal';
+import BoardIcon from './BoardIcon';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -32,13 +32,23 @@ interface BoardMember {
 interface BoardInfo {
   id: string;
   name: string;
+  emoji: string;
+  websiteUrl: string | null;
   slug: string;
   joinCode: string;
+  ownerId?: string | null;
   hasPassword: boolean;
   passkeyRequired?: boolean;
   isOwner?: boolean;
   projects: Project[];
   members?: BoardMember[];
+}
+
+interface FriendOption {
+  id: string;
+  name: string;
+  friendCode: string;
+  avatar?: string;
 }
 
 export default function BoardView({ boardSlug }: BoardViewProps) {
@@ -55,6 +65,12 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   });
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [editName, setEditName] = useState('');
+  const [editEmoji, setEditEmoji] = useState('📋');
+  const [editWebsiteUrl, setEditWebsiteUrl] = useState('');
+  const [transferOwnerId, setTransferOwnerId] = useState('');
+  const [transferConfirm, setTransferConfirm] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [friends, setFriends] = useState<FriendOption[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   useEffect(() => {
@@ -155,19 +171,43 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     needsAttention: activeProjects.filter((p) => getProjectProgress(p) < 50).length
   };
 
+  const loadFriends = async () => {
+    try {
+      const response = await fetch('/api/friends');
+      if (response.ok) {
+        const data = await response.json();
+        setFriends(data.friends || []);
+      }
+    } catch (err) {
+      console.error('Failed to load friends:', err);
+    }
+  };
+
+  const openBoardSettings = () => {
+    if (!board?.isOwner) return;
+    setEditName(board.name);
+    setEditEmoji(board.emoji || '📋');
+    setEditWebsiteUrl(board.websiteUrl || '');
+    setTransferOwnerId('');
+    setTransferConfirm('');
+    setSettingsError('');
+    setShowRenameModal(true);
+    void loadFriends();
+  };
+
   return (
     <div className="min-h-screen bg-transparent">
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.9)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
+        className="border-b border-[var(--border)] bg-[var(--header-surface)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
       >
         <div className="max-w-full mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="text-[var(--accent)] hover:text-[var(--accent)]/80 text-sm font-medium transition-colors"
+              className="profile-accent-link text-sm font-medium transition-colors"
             >
               ← Boards
             </Link>
@@ -175,16 +215,22 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">
                 Code: {board.joinCode}
               </p>
-              <h1
-                className="hero-title text-[var(--foreground)] text-2xl md:text-3xl mt-1 cursor-pointer hover:text-[var(--accent)] transition-colors"
-                onClick={() => {
-                  setEditName(board.name);
-                  setShowRenameModal(true);
-                }}
-                title="Click to rename"
+              <button
+                type="button"
+                className={`hero-title text-[var(--foreground)] text-xl md:text-2xl mt-1 transition-colors text-left ${
+                  board.isOwner ? 'cursor-pointer hover:text-[var(--accent)]' : 'cursor-default'
+                }`}
+                onClick={openBoardSettings}
+                title={board.isOwner ? 'Board settings' : board.name}
               >
+                <BoardIcon
+                  emoji={board.emoji}
+                  websiteUrl={board.websiteUrl}
+                  className="mr-2 inline-block"
+                  imageClassName="mr-2 inline-block w-6 h-6 rounded-md align-[-0.12em]"
+                />
                 {board.name}
-              </h1>
+              </button>
             </div>
           </div>
 
@@ -202,41 +248,44 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                       <img
                         src={member.avatar}
                         alt={member.name}
-                        className="w-8 h-8 rounded-full border-2 border-[var(--panel)] shadow-sm"
+                        className="w-7 h-7 rounded-full border-2 border-[var(--panel)] shadow-sm"
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-[var(--accent)]/20 border-2 border-[var(--panel)] flex items-center justify-center text-xs font-bold text-[var(--accent)]">
+                      <div className="w-7 h-7 rounded-full bg-[var(--accent)]/20 border-2 border-[var(--panel)] flex items-center justify-center text-[11px] font-bold text-[var(--accent)]">
                         {member.name.charAt(0).toUpperCase()}
                       </div>
                     )}
                     {member.role === 'owner' && (
-                      <span className="absolute -top-1 -right-1 text-xs">👑</span>
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[13px] drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] pointer-events-none">👑</span>
                     )}
                   </div>
                 ))}
                 {board.members.length > 5 && (
-                  <div className="w-8 h-8 rounded-full bg-[var(--panel-strong)] border-2 border-[var(--panel)] flex items-center justify-center text-xs font-medium text-[var(--muted)]">
+                  <div className="w-7 h-7 rounded-full bg-[var(--panel-strong)] border-2 border-[var(--panel)] flex items-center justify-center text-[11px] font-medium text-[var(--muted)]">
                     +{board.members.length - 5}
                   </div>
                 )}
               </div>
             )}
             
-            <FriendsList />
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowInviteModal(true)}
-              className="px-4 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)] transition-all duration-300"
+              aria-label="Invite"
+              title="Invite"
+              className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300"
             >
-              📧 Invite Friends
+              <span aria-hidden="true">📧</span>
             </motion.button>
             {doneCount > 0 && (
               <Link
                 href={`/board/${board.slug}/hall-of-fame`}
-                className="px-4 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)] transition-all duration-300"
+                aria-label={`Hall of Fame, ${doneCount} completed`}
+                title={`Hall of Fame (${doneCount})`}
+                className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300"
               >
-                🏆 Hall of Fame ({doneCount})
+                <span aria-hidden="true">🏆</span>
               </Link>
             )}
 
@@ -244,13 +293,15 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowForm(!showForm)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+              aria-label="New project"
+              title="New project"
+              className={`app-toolbar-button transition-all duration-300 ${
                 showForm
-                  ? 'bg-[var(--accent)] text-white border border-[var(--accent)] shadow-[0_8px_20px_rgba(29,31,35,0.16)]'
-                  : 'bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)]'
+                  ? 'app-toolbar-button-primary'
+                  : 'app-toolbar-button-neutral'
               }`}
             >
-              + New project
+              <span aria-hidden="true">+</span>
             </motion.button>
 
             <UserMenu />
@@ -265,7 +316,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.96)] backdrop-blur-sm"
+            className="border-b border-[var(--border)] bg-[var(--header-strong)] backdrop-blur-sm"
           >
             <form
               onSubmit={handleAddProject}
@@ -341,7 +392,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         ))}
       </motion.div>
 
-      {/* Rename Modal */}
+      {/* Board Settings Modal */}
       <AnimatePresence>
         {showRenameModal && (
           <motion.div
@@ -358,33 +409,126 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               onClick={(e) => e.stopPropagation()}
               className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-md w-full shadow-2xl"
             >
-              <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Rename Board</h2>
+              <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Board Settings</h2>
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!editName.trim() || !board) return;
+                  if (!editName.trim() || !editEmoji.trim() || !board) return;
+                  if (transferOwnerId && transferConfirm !== board.name) {
+                    setSettingsError(`Type ${board.name} to confirm ownership transfer.`);
+                    return;
+                  }
                   try {
                     const response = await fetch(`/api/boards/${board.id}`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: editName.trim() }),
+                      body: JSON.stringify({
+                        name: editName.trim(),
+                        emoji: editEmoji.trim(),
+                        websiteUrl: editWebsiteUrl.trim() || null,
+                        transferOwnerId: transferOwnerId || undefined,
+                      }),
                     });
                     if (response.ok) {
-                      setBoard({ ...board, name: editName.trim() });
+                      const updated = await response.json();
+                      setBoard({
+                        ...board,
+                        name: updated.name,
+                        emoji: updated.emoji,
+                        websiteUrl: updated.websiteUrl,
+                        ownerId: updated.ownerId,
+                        isOwner: updated.isOwner,
+                        members: board.members?.map((member) => {
+                          if (member.userId === transferOwnerId) return { ...member, role: 'owner' };
+                          if (member.role === 'owner') return { ...member, role: 'editor' };
+                          return member;
+                        }),
+                      });
                       setShowRenameModal(false);
+                      void loadBoard();
+                    } else {
+                      const data = await response.json().catch(() => ({}));
+                      setSettingsError(data.error || 'Failed to update board settings');
                     }
                   } catch (err) {
                     console.error('Failed to rename board:', err);
+                    setSettingsError('Failed to update board settings');
                   }
                 }}
               >
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/40 mb-4"
-                  autoFocus
-                />
+                <div className="grid grid-cols-[4.5rem_1fr] gap-3 mb-4">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase text-[var(--muted)]">Emoji</span>
+                    <input
+                      type="text"
+                      value={editEmoji}
+                      onChange={(e) => setEditEmoji(e.target.value)}
+                      className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] text-2xl text-center focus:outline-none focus:border-[var(--accent)]/40"
+                      maxLength={16}
+                      autoFocus
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase text-[var(--muted)]">Name</span>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/40"
+                    />
+                  </label>
+                </div>
+
+                <label className="block mb-4">
+                  <span className="text-xs font-semibold uppercase text-[var(--muted)]">Website</span>
+                  <input
+                    type="url"
+                    value={editWebsiteUrl}
+                    onChange={(e) => setEditWebsiteUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
+                  />
+                  <span className="mt-1 block text-xs text-[var(--muted)]">
+                    When set, the board icon uses this site&apos;s favicon.
+                  </span>
+                </label>
+
+                <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-3">
+                  <p className="text-sm font-semibold text-[var(--foreground)]">Transfer ownership</p>
+                  <p className="text-xs text-[var(--muted)] mt-1">
+                    Transfer this board to an accepted friend. You will become an editor.
+                  </p>
+                  <select
+                    value={transferOwnerId}
+                    onChange={(e) => {
+                      setTransferOwnerId(e.target.value);
+                      setTransferConfirm('');
+                      setSettingsError('');
+                    }}
+                    className="mt-3 w-full px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/40"
+                  >
+                    <option value="">Keep current owner</option>
+                    {friends.map((friend) => (
+                      <option key={friend.id} value={friend.id}>
+                        {friend.name} ({friend.friendCode})
+                      </option>
+                    ))}
+                  </select>
+                  {transferOwnerId && (
+                    <input
+                      type="text"
+                      value={transferConfirm}
+                      onChange={(e) => setTransferConfirm(e.target.value)}
+                      placeholder={`Type "${board.name}" to confirm`}
+                      className="mt-3 w-full px-3 py-2 rounded-lg bg-[var(--panel)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]/40"
+                    />
+                  )}
+                </div>
+
+                {settingsError && (
+                  <p className="text-sm text-red-600 mb-3">{settingsError}</p>
+                )}
+
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -440,7 +584,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
 
                   <motion.div
                     layout
-                    className="space-y-3 min-h-[200px] rounded-2xl bg-[rgba(248,246,242,0.75)] border border-[var(--border)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
+                    className="space-y-3 min-h-[200px] rounded-2xl bg-[var(--lane-surface)] border border-[var(--border)] p-4 shadow-[inset_0_1px_0_var(--inset-highlight)]"
                   >
                     <AnimatePresence mode="popLayout">
                       {stageProjects.length > 0 ? (

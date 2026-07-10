@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
@@ -43,6 +43,45 @@ interface BoardInvite {
   };
 }
 
+interface BoardInviteResponse {
+  id: string;
+  boardId?: string;
+  boardName?: string;
+  boardSlug?: string;
+  fromUserId?: string;
+  fromUserName?: string;
+  fromFriendCode?: string;
+  fromUserAvatar?: string;
+  createdAt: string;
+  fromUser?: {
+    id: string;
+    name: string;
+    friendCode: string;
+  };
+  board?: {
+    id: string;
+    name: string;
+    slug: string;
+    joinCode: string;
+  };
+}
+
+function normalizeBoardInvite(invite: BoardInviteResponse): BoardInvite {
+  return {
+    id: invite.id,
+    boardId: invite.boardId || invite.board?.id || '',
+    boardName: invite.boardName || invite.board?.name || 'Untitled board',
+    boardSlug: invite.boardSlug || invite.board?.slug || '',
+    fromUserId: invite.fromUserId || invite.fromUser?.id || '',
+    fromUserName: invite.fromUserName || invite.fromUser?.name || 'A friend',
+    fromFriendCode: invite.fromFriendCode || invite.fromUser?.friendCode || '',
+    fromUserAvatar: invite.fromUserAvatar,
+    createdAt: invite.createdAt,
+    fromUser: invite.fromUser,
+    board: invite.board,
+  };
+}
+
 export default function FriendsList() {
   const { authenticated, user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -57,16 +96,9 @@ export default function FriendsList() {
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState<'friends' | 'invites'>('friends');
 
-  useEffect(() => {
-    if (isOpen && authenticated) {
-      loadFriends();
-      loadBoardInvites();
-    }
-  }, [isOpen, authenticated]);
+  const loadFriends = useCallback(async () => {
+    if (!authenticated) return;
 
-  if (!authenticated) return null;
-
-  const loadFriends = async () => {
     try {
       const response = await fetch('/api/friends');
       if (response.ok) {
@@ -78,19 +110,49 @@ export default function FriendsList() {
     } catch (err) {
       console.error('Failed to load friends:', err);
     }
-  };
+  }, [authenticated]);
 
-  const loadBoardInvites = async () => {
+  const loadBoardInvites = useCallback(async () => {
+    if (!authenticated) return;
+
     try {
       const response = await fetch('/api/invites');
       if (response.ok) {
-        const data = await response.json();
-        setBoardInvites(data);
+        const data = await response.json() as BoardInviteResponse[];
+        setBoardInvites(data.map(normalizeBoardInvite));
       }
     } catch (err) {
       console.error('Failed to load board invites:', err);
     }
-  };
+  }, [authenticated]);
+
+  const refreshNotifications = useCallback(() => {
+    void loadFriends();
+    void loadBoardInvites();
+  }, [loadFriends, loadBoardInvites]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+
+    refreshNotifications();
+    const intervalId = window.setInterval(refreshNotifications, 30000);
+
+    const handleFocus = () => refreshNotifications();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [authenticated, refreshNotifications]);
+
+  useEffect(() => {
+    if (isOpen && authenticated) {
+      refreshNotifications();
+    }
+  }, [isOpen, authenticated, refreshNotifications]);
+
+  if (!authenticated) return null;
 
   const addFriend = async () => {
     if (!friendCode.trim()) return;
@@ -168,6 +230,26 @@ export default function FriendsList() {
 
   const hasPendingRequests = incomingRequests.length > 0;
   const hasBoardInvites = boardInvites.length > 0;
+  const notificationCount = incomingRequests.length + boardInvites.length;
+  const notificationLabel = notificationCount === 0
+    ? 'Friends and invitations'
+    : `${notificationCount} pending notification${notificationCount === 1 ? '' : 's'}`;
+
+  const handleToggle = () => {
+    const shouldOpen = !isOpen;
+
+    if (shouldOpen) {
+      if (hasPendingRequests) {
+        setActiveTab('friends');
+      } else if (hasBoardInvites) {
+        setActiveTab('invites');
+      }
+
+      refreshNotifications();
+    }
+
+    setIsOpen(shouldOpen);
+  };
 
   // Avatar component for consistent rendering
   const Avatar = ({ src, name, size = 32 }: { src?: string; name: string; size?: number }) => (
@@ -179,17 +261,20 @@ export default function FriendsList() {
   );
 
   return (
-    <>
+    <div className="relative">
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] transition-all duration-300 text-sm relative"
+        onClick={handleToggle}
+        aria-label={notificationLabel}
+        title={notificationLabel}
+        className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300 relative"
       >
-        👥 Friends
-        {(hasPendingRequests || hasBoardInvites) && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {incomingRequests.length + boardInvites.length}
+        <span aria-hidden="true">👥</span>
+        <span className="hidden sm:inline">Friends</span>
+        {notificationCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+            {notificationCount}
           </span>
         )}
       </motion.button>
@@ -208,13 +293,18 @@ export default function FriendsList() {
               <div className="flex gap-2 mb-3">
                 <button
                   onClick={() => setActiveTab('friends')}
-                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all relative ${
                     activeTab === 'friends'
                       ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
                       : 'bg-[var(--panel-strong)] text-[var(--muted)] hover:text-[var(--foreground)]'
                   }`}
                 >
                   Friends & Requests
+                  {hasPendingRequests && (
+                    <span className="absolute -top-1 -right-2 min-w-4 h-4 px-1 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                      {incomingRequests.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => setActiveTab('invites')}
@@ -236,6 +326,35 @@ export default function FriendsList() {
               <h3 className="text-sm font-semibold text-[var(--foreground)] mb-3">
                 {activeTab === 'friends' ? 'Friends' : 'Board Invitations'}
               </h3>
+
+              {notificationCount > 0 && (
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('friends')}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      hasPendingRequests
+                        ? 'border-[var(--border)] bg-[var(--panel-strong)] hover:bg-[var(--accent-soft)]'
+                        : 'border-[var(--border)] bg-[var(--panel)] opacity-70'
+                    }`}
+                  >
+                    <span className="block text-lg font-bold text-[var(--foreground)]">{incomingRequests.length}</span>
+                    <span className="text-xs text-[var(--muted)]">Friend request{incomingRequests.length === 1 ? '' : 's'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('invites')}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      hasBoardInvites
+                        ? 'border-[var(--border)] bg-[var(--panel-strong)] hover:bg-[var(--accent-soft)]'
+                        : 'border-[var(--border)] bg-[var(--panel)] opacity-70'
+                    }`}
+                  >
+                    <span className="block text-lg font-bold text-[var(--foreground)]">{boardInvites.length}</span>
+                    <span className="text-xs text-[var(--muted)]">Board invite{boardInvites.length === 1 ? '' : 's'}</span>
+                  </button>
+                </div>
+              )}
               
               {/* Your Friend Code Section - only show on friends tab */}
               {activeTab === 'friends' && (
@@ -422,6 +541,6 @@ export default function FriendsList() {
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }

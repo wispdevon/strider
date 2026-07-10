@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession, destroySession } from '@/lib/session';
-import { getUserById, getAvatarRerolls, getAvatarSeed, hasUnlimitedRerolls, MAX_DAILY_REROLLS } from '@/lib/users';
-import { generateAvatarFromSeed } from '@/lib/avatar';
+import { getUserById, canChangeUsername, getAvatarRerolls, getAvatarSeed, hasUnlimitedRerolls, MAX_DAILY_REROLLS } from '@/lib/users';
+import { generateAvatarFromSeed, getAvatarAccentColor } from '@/lib/avatar';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +29,7 @@ export async function GET() {
     const avatarRerolls = getAvatarRerolls(user.id);
     const avatarSeed = getAvatarSeed(user.id);
     const avatar = generateAvatarFromSeed(avatarSeed);
+    const avatarAccent = getAvatarAccentColor(avatarSeed);
     // For unlimited users, send a large number since Infinity serializes to null in JSON.
     // The avatarRerollsUnlimited flag is the source of truth on the client.
     const avatarRerollsRemaining = unlimited ? 999999 : Math.max(0, MAX_DAILY_REROLLS - avatarRerolls);
@@ -41,7 +42,10 @@ export async function GET() {
         name: user.name,
         email: user.email,
         friendCode: user.friendCode,
+        usernameChangedDate: user.usernameChangedDate,
+        canChangeUsername: canChangeUsername(user.id),
         avatar: avatar,
+        avatarAccent,
         avatarRerolls,
         avatarRerollsRemaining,
         avatarRerollsUnlimited: unlimited,

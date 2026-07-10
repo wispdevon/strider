@@ -24,6 +24,8 @@ export interface Project {
 export interface Board {
   id: string;
   name: string;
+  emoji: string;
+  websiteUrl: string | null;
   slug: string;
   joinCode: string;
   passwordHash: string | null;
@@ -42,6 +44,7 @@ export interface User {
   name: string;
   email: string | null;
   friendCode: string;
+  usernameChangedDate: string | null;
   createdAt: string;
 }
 
@@ -61,6 +64,8 @@ export interface PasskeyCredential {
 export interface BoardRow {
   id: string;
   name: string;
+  emoji: string;
+  website_url: string | null;
   slug: string;
   join_code: string;
   password_hash: string | null;
@@ -90,6 +95,7 @@ export interface UserRow {
   avatar_rerolls: number;
   avatar_rerolls_date: string | null;
   avatar_seed: string | null;
+  username_changed_date: string | null;
   created_at: string;
 }
 

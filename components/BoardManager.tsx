@@ -5,11 +5,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import UserMenu from './UserMenu';
 import FriendsList from './FriendsList';
+import BoardIcon from './BoardIcon';
 import { useAuth } from '@/context/auth-context';
 
 interface Board {
   id: string;
   name: string;
+  emoji: string;
+  websiteUrl: string | null;
   slug: string;
   joinCode: string;
   hasPassword: boolean;
@@ -142,7 +145,7 @@ export default function BoardManager() {
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.9)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
+        className="border-b border-[var(--border)] bg-[var(--header-surface)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
       >
         <div className="max-w-5xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
@@ -157,17 +160,23 @@ export default function BoardManager() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { setShowJoinForm(!showJoinForm); setShowCreateForm(false); }}
-              className="px-4 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)] transition-all duration-300"
+              aria-label="Join Board"
+              title="Join Board"
+              className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300"
             >
-              Join Board
+              <span aria-hidden="true">↪</span>
+              <span className="hidden sm:inline">Join Board</span>
             </motion.button>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => { setShowCreateForm(!showCreateForm); setShowJoinForm(false); }}
-              className="px-4 py-2 rounded-lg font-medium bg-[var(--accent)] text-white border border-[var(--accent)] shadow-[0_8px_20px_rgba(29,31,35,0.16)] transition-all duration-300"
+              aria-label="New Board"
+              title="New Board"
+              className="app-toolbar-button profile-accent-button transition-all duration-300"
             >
-              + New Board
+              <span aria-hidden="true">+</span>
+              <span className="hidden sm:inline">New Board</span>
             </motion.button>
           </div>
         </div>
@@ -248,7 +257,7 @@ export default function BoardManager() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.96)] backdrop-blur-sm"
+            className="border-b border-[var(--border)] bg-[var(--header-strong)] backdrop-blur-sm"
           >
             <form onSubmit={handleCreateBoard} className="max-w-5xl mx-auto px-6 py-4">
               <div className="grid gap-3 sm:grid-cols-3">
@@ -300,7 +309,7 @@ export default function BoardManager() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.96)] backdrop-blur-sm"
+            className="border-b border-[var(--border)] bg-[var(--header-strong)] backdrop-blur-sm"
           >
             <form onSubmit={handleJoinBoard} className="max-w-5xl mx-auto px-6 py-4">
               <div className="grid gap-3 sm:grid-cols-3">
@@ -369,7 +378,12 @@ export default function BoardManager() {
                         className="rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
                       >
                         <div className="flex justify-between items-start mb-3">
-                          <span className="text-2xl">📋</span>
+                          <BoardIcon
+                            emoji={board.emoji}
+                            websiteUrl={board.websiteUrl}
+                            className="text-2xl"
+                            imageClassName="w-8 h-8 rounded-md"
+                          />
                           <div className="flex gap-1">
                             {board.passkeyRequired && (
                               <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
@@ -382,7 +396,7 @@ export default function BoardManager() {
                               </span>
                             )}
                             {board.isOwner && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                              <span className="text-xs px-2 py-1 rounded-full profile-accent-tag">
                                 👑 Owner
                               </span>
                             )}

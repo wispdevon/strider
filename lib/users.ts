@@ -6,6 +6,21 @@ import { getDb, generateCode } from './db-core';
 import type { User, UserRow, PasskeyCredential, PasskeyRow, Friendship, FriendshipRow } from './types';
 
 // User functions
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function mapUserRow(row: UserRow): User {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    friendCode: row.friend_code,
+    usernameChangedDate: row.username_changed_date ?? null,
+    createdAt: row.created_at
+  };
+}
+
 export function createUser(name: string, email?: string): User {
   const db = getDb();
   const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -16,7 +31,7 @@ export function createUser(name: string, email?: string): User {
     VALUES (@id, @name, @email, @friendCode)
   `).run({ id, name, email: email || null, friendCode });
 
-  return { id, name, email: email || null, friendCode, createdAt: new Date().toISOString() };
+  return { id, name, email: email || null, friendCode, usernameChangedDate: null, createdAt: new Date().toISOString() };
 }
 
 export function getUserById(id: string): User | null {
@@ -25,13 +40,7 @@ export function getUserById(id: string): User | null {
 
   if (!row) return null;
 
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    friendCode: row.friend_code,
-    createdAt: row.created_at
-  };
+  return mapUserRow(row);
 }
 
 export function getUserByFriendCode(friendCode: string): User | null {
@@ -40,13 +49,29 @@ export function getUserByFriendCode(friendCode: string): User | null {
 
   if (!row) return null;
 
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    friendCode: row.friend_code,
-    createdAt: row.created_at
-  };
+  return mapUserRow(row);
+}
+
+export function canChangeUsername(userId: string): boolean {
+  const db = getDb();
+  const row = db.prepare('SELECT username_changed_date FROM users WHERE id = ?').get(userId) as { username_changed_date: string | null } | undefined;
+  return !!row && row.username_changed_date !== todayKey();
+}
+
+export function updateUsername(userId: string, name: string): User | null {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 40) return null;
+
+  const db = getDb();
+  const today = todayKey();
+  const result = db.prepare(`
+    UPDATE users
+    SET name = ?, username_changed_date = ?
+    WHERE id = ? AND (username_changed_date IS NULL OR username_changed_date != ?)
+  `).run(trimmed, today, userId, today);
+
+  if (result.changes === 0) return null;
+  return getUserById(userId);
 }
 
 // Passkey credential functions
@@ -185,6 +210,7 @@ export function getFriendsByUserId(userId: string): (Friendship & { friend: User
       name: row.friend_name,
       email: row.friend_email,
       friendCode: row.friend_friend_code,
+      usernameChangedDate: null,
       createdAt: row.friend_created_at
     }
   }));
@@ -211,6 +237,7 @@ export function getIncomingFriendRequests(userId: string): (Friendship & { user:
       name: row.user_name,
       email: row.user_email,
       friendCode: row.user_friend_code,
+      usernameChangedDate: null,
       createdAt: row.user_created_at
     }
   }));
@@ -237,6 +264,7 @@ export function getOutgoingFriendRequests(userId: string): (Friendship & { frien
       name: row.friend_name,
       email: row.friend_email,
       friendCode: row.friend_friend_code,
+      usernameChangedDate: null,
       createdAt: row.friend_created_at
     }
   }));
@@ -299,11 +327,8 @@ export function updateFriendshipStatus(userId: string, friendId: string, status:
   return result.changes > 0;
 }
 
-// Maximum daily avatar rerolls for normal users
+// Legacy fallback for clients that still display a finite reroll count.
 export const MAX_DAILY_REROLLS = 5;
-
-// Usernames that get unlimited avatar rerolls
-const UNLIMITED_REROLL_USERS = ['wisp'];
 
 /**
  * Returns today's date string (YYYY-MM-DD) in UTC for consistent daily reset.
@@ -313,13 +338,12 @@ function getTodayDateString(): string {
 }
 
 /**
- * Check if a user has unlimited avatar rerolls (by username).
+ * Check if a user has unlimited avatar rerolls.
  */
 export function hasUnlimitedRerolls(userId: string): boolean {
   const db = getDb();
-  const row = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string } | undefined;
-  if (!row) return false;
-  return UNLIMITED_REROLL_USERS.includes(row.name.toLowerCase());
+  const row = db.prepare('SELECT id FROM users WHERE id = ?').get(userId) as { id: string } | undefined;
+  return !!row;
 }
 
 /**

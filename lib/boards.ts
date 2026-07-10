@@ -13,6 +13,8 @@ export function getAllBoards(): Board[] {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    emoji: row.emoji || '📋',
+    websiteUrl: row.website_url || null,
     slug: row.slug,
     joinCode: row.join_code,
     passwordHash: row.password_hash,
@@ -30,6 +32,8 @@ export function getBoardsByOwnerId(ownerId: string): Board[] {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    emoji: row.emoji || '📋',
+    websiteUrl: row.website_url || null,
     slug: row.slug,
     joinCode: row.join_code,
     passwordHash: row.password_hash,
@@ -49,6 +53,8 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
   const board: Board = {
     id: row.id,
     name: row.name,
+    emoji: row.emoji || '📋',
+    websiteUrl: row.website_url || null,
     slug: row.slug,
     joinCode: row.join_code,
     passwordHash: row.password_hash,
@@ -84,6 +90,8 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
   return {
     id: row.id,
     name: row.name,
+    emoji: row.emoji || '📋',
+    websiteUrl: row.website_url || null,
     slug: row.slug,
     joinCode: row.join_code,
     passwordHash: row.password_hash,
@@ -98,7 +106,7 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
  * Create a board. Internal use for seeding accepts optional fixed id/joinCode/authorPin.
  */
 export function createBoard(
-  input: { name: string; password?: string; ownerId?: string; passkeyRequired?: boolean },
+  input: { name: string; emoji?: string; websiteUrl?: string | null; password?: string; ownerId?: string; passkeyRequired?: boolean },
   id?: string,
   joinCode?: string,
   authorPin?: string
@@ -113,11 +121,13 @@ export function createBoard(
   const passkeyRequired = input.passkeyRequired ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO boards (id, name, slug, join_code, password_hash, author_pin, owner_id, passkey_required)
-    VALUES (@id, @name, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @passkeyRequired)
+    INSERT INTO boards (id, name, emoji, website_url, slug, join_code, password_hash, author_pin, owner_id, passkey_required)
+    VALUES (@id, @name, @emoji, @websiteUrl, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @passkeyRequired)
   `).run({
     id: finalId,
     name: input.name,
+    emoji: input.emoji || '📋',
+    websiteUrl: input.websiteUrl || null,
     slug: slugWithSuffix,
     joinCode: finalJoinCode,
     passwordHash,
@@ -129,6 +139,8 @@ export function createBoard(
   return {
     id: finalId,
     name: input.name,
+    emoji: input.emoji || '📋',
+    websiteUrl: input.websiteUrl || null,
     slug: slugWithSuffix,
     joinCode: finalJoinCode,
     passwordHash,
@@ -141,6 +153,8 @@ export function createBoard(
 
 export function updateBoard(id: string, updates: {
   name?: string;
+  emoji?: string;
+  websiteUrl?: string | null;
   password?: string | null;
   passkeyRequired?: boolean;
 }): Board | null {
@@ -149,6 +163,8 @@ export function updateBoard(id: string, updates: {
 
   const db = getDb();
   const newName = updates.name ?? current.name;
+  const newEmoji = updates.emoji ?? current.emoji;
+  const newWebsiteUrl = updates.websiteUrl !== undefined ? updates.websiteUrl : current.websiteUrl;
   const newPasswordHash = updates.password === null 
     ? null 
     : updates.password 
@@ -160,11 +176,13 @@ export function updateBoard(id: string, updates: {
 
   db.prepare(`
     UPDATE boards
-    SET name = @name, password_hash = @passwordHash, passkey_required = @passkeyRequired
+    SET name = @name, emoji = @emoji, website_url = @websiteUrl, password_hash = @passwordHash, passkey_required = @passkeyRequired
     WHERE id = @id
   `).run({
     id,
     name: newName,
+    emoji: newEmoji,
+    websiteUrl: newWebsiteUrl,
     passwordHash: newPasswordHash,
     passkeyRequired: newPasskeyRequired
   });
@@ -172,9 +190,36 @@ export function updateBoard(id: string, updates: {
   return {
     ...current,
     name: newName,
+    emoji: newEmoji,
+    websiteUrl: newWebsiteUrl,
     passwordHash: newPasswordHash,
     passkeyRequired: newPasskeyRequired === 1
   };
+}
+
+export function transferBoardOwnership(boardId: string, currentOwnerId: string, newOwnerId: string): boolean {
+  const db = getDb();
+  const board = db.prepare('SELECT owner_id FROM boards WHERE id = ?').get(boardId) as { owner_id: string | null } | undefined;
+  if (!board || board.owner_id !== currentOwnerId || currentOwnerId === newOwnerId) {
+    return false;
+  }
+
+  const transfer = db.transaction(() => {
+    db.prepare('UPDATE boards SET owner_id = ? WHERE id = ?').run(newOwnerId, boardId);
+    db.prepare('UPDATE board_members SET role = ? WHERE board_id = ? AND user_id = ?').run('editor', boardId, currentOwnerId);
+    db.prepare(`
+      INSERT INTO board_members (id, board_id, user_id, role)
+      VALUES (@id, @boardId, @userId, 'owner')
+      ON CONFLICT(board_id, user_id) DO UPDATE SET role = 'owner'
+    `).run({
+      id: `member-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      boardId,
+      userId: newOwnerId,
+    });
+  });
+
+  transfer();
+  return true;
 }
 
 export function verifyBoardPassword(joinCode: string, password: string): boolean {

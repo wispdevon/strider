@@ -5,6 +5,23 @@ import { getDb } from '@/lib/db-core';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeWebsiteUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new Error('Invalid website URL');
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 2048) throw new Error('Website URL is too long');
+
+  const withProtocol = trimmed.includes('://') ? trimmed : `https://${trimmed}`;
+  const url = new URL(withProtocol);
+  if (url.protocol !== 'https:') {
+    throw new Error('Website URL must use HTTPS');
+  }
+  return url.toString();
+}
+
 // Helper to get boards where user is a member
 function getBoardsByMemberId(userId: string) {
   const db = getDb();
@@ -18,6 +35,8 @@ function getBoardsByMemberId(userId: string) {
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    emoji: row.emoji || '📋',
+    websiteUrl: row.website_url || null,
     slug: row.slug,
     joinCode: row.join_code,
     passwordHash: row.password_hash,
@@ -68,13 +87,22 @@ export async function POST(request: Request) {
     if (!body) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const { name, password, passkeyRequired } = body;
+    const { name, emoji, websiteUrl, password, passkeyRequired } = body;
 
     if (typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Board name is required' }, { status: 400 });
     }
     if (name.length > 120) {
       return NextResponse.json({ error: 'Board name is too long' }, { status: 400 });
+    }
+    if (emoji !== undefined && (typeof emoji !== 'string' || !emoji.trim() || emoji.trim().length > 16)) {
+      return NextResponse.json({ error: 'Invalid board emoji' }, { status: 400 });
+    }
+    let normalizedWebsiteUrl: string | null | undefined;
+    try {
+      normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid website URL' }, { status: 400 });
     }
     if (password !== undefined && (typeof password !== 'string' || password.length > 200)) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 400 });
@@ -93,7 +121,7 @@ export async function POST(request: Request) {
     
     const ownerId = session?.userId || undefined;
 
-    const board = createBoard({ name: name.trim(), password, ownerId, passkeyRequired: !!passkeyRequired });
+    const board = createBoard({ name: name.trim(), emoji: typeof emoji === 'string' ? emoji.trim() : undefined, websiteUrl: normalizedWebsiteUrl, password, ownerId, passkeyRequired: !!passkeyRequired });
 
     // If user is authenticated and owns the board, also add them as a member
     if (session?.userId && board.ownerId === session.userId) {
@@ -104,6 +132,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       id: board.id,
       name: board.name,
+      emoji: board.emoji,
+      websiteUrl: board.websiteUrl,
       slug: board.slug,
       joinCode: board.joinCode,
       authorPin: board.authorPin,
@@ -173,6 +203,8 @@ export async function PUT(request: Request) {
   return NextResponse.json({
     id: board.id,
     name: board.name,
+    emoji: board.emoji,
+    websiteUrl: board.websiteUrl,
     slug: board.slug,
     joinCode: board.joinCode,
     hasPassword: !!board.passwordHash,

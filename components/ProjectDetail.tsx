@@ -215,14 +215,17 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="border-b border-[var(--border)] bg-[rgba(248,246,242,0.9)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
+        className="border-b border-[var(--border)] bg-[var(--header-surface)] backdrop-blur-xl sticky top-0 z-50 shadow-[0_8px_24px_rgba(17,17,17,0.04)]"
       >
         <div className="max-w-4xl mx-auto px-6 py-4">
           <Link
             href="/"
-            className="text-[var(--accent)] hover:text-[var(--accent)]/80 text-sm font-medium transition-colors mb-3 inline-flex items-center gap-1"
+            aria-label="Back to board"
+            title="Back to board"
+            className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300 mb-3"
           >
-            ← Back to board
+            <span aria-hidden="true">←</span>
+            <span className="hidden sm:inline">Back to board</span>
           </Link>
         </div>
       </motion.header>
@@ -306,13 +309,16 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setShowAddSubtask(!showAddSubtask)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                aria-label="Add subtask"
+                title="Add subtask"
+                className={`app-toolbar-button transition-all duration-300 ${
                   showAddSubtask
-                    ? 'bg-[var(--accent)] text-white shadow-[0_8px_20px_rgba(29,31,35,0.16)]'
-                    : 'bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)]'
+                    ? 'app-toolbar-button-primary'
+                    : 'app-toolbar-button-neutral'
                 }`}
               >
-                + Add subtask
+                <span aria-hidden="true">+</span>
+                <span className="hidden sm:inline">Add subtask</span>
               </motion.button>
             </div>
 
@@ -381,17 +387,23 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handleMoveStage('back')}
-              className="px-4 py-2 rounded-lg bg-[var(--panel)] hover:bg-[var(--panel-strong)] text-[var(--foreground)] font-medium transition-colors shadow-[0_6px_14px_rgba(17,17,17,0.04)]"
+              aria-label="Move back stage"
+              title="Move back stage"
+              className="app-toolbar-button app-toolbar-button-neutral transition-colors"
             >
-              ← Move back stage
+              <span aria-hidden="true">←</span>
+              <span className="hidden sm:inline">Move back stage</span>
             </motion.button>
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => handleMoveStage('forward')}
-              className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent)]/95 text-white font-medium transition-colors shadow-[0_8px_20px_rgba(29,31,35,0.16)]"
+              aria-label="Advance stage"
+              title="Advance stage"
+              className="app-toolbar-button app-toolbar-button-primary transition-colors"
             >
-              Advance stage →
+              <span className="hidden sm:inline">Advance stage</span>
+              <span aria-hidden="true">→</span>
             </motion.button>
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -400,9 +412,12 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                 deleteProject(project.id);
                 window.location.href = '/';
               }}
-              className="px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 font-medium transition-colors ml-auto"
+              aria-label="Delete workspace"
+              title="Delete workspace"
+              className="app-toolbar-button app-toolbar-button-danger transition-colors ml-auto"
             >
-              Delete workspace
+              <span aria-hidden="true">×</span>
+              <span className="hidden sm:inline">Delete workspace</span>
             </motion.button>
           </motion.div>
         </motion.div>

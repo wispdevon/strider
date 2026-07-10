@@ -7,7 +7,10 @@ interface User {
   name: string;
   email: string | null;
   friendCode: string;
+  usernameChangedDate: string | null;
+  canChangeUsername: boolean;
   avatar: string;
+  avatarAccent: string;
   avatarRerolls: number;
   avatarRerollsRemaining: number;
   avatarRerollsUnlimited: boolean;
@@ -74,6 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     checkSession();
   }, [checkSession, refreshCounter]);
+
+  useEffect(() => {
+    if (user?.avatarAccent) {
+      document.documentElement.style.setProperty('--profile-accent', user.avatarAccent);
+    } else {
+      document.documentElement.style.removeProperty('--profile-accent');
+    }
+  }, [user?.avatarAccent]);
 
   const register = useCallback(async (name?: string, email?: string) => {
     console.log('[AuthContext] register called:', { name: name || '(auto)', email: email || '(none)' });

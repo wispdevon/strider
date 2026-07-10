@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["boards.devonlabs.space"],
+
   // Keep Turbopack scoped to this app when parent folders also contain lockfiles.
   turbopack: {
     root: process.cwd(),
@@ -31,7 +33,7 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
+              "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               "connect-src 'self'",
               "frame-ancestors 'none'",

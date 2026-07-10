@@ -18,10 +18,10 @@ export type { Subtask, Project, Board, BoardWithProjects, User, PasskeyCredentia
 export { getDb, generateCode, generatePin, hashPassword } from './db-core';
 
 // Re-export user functions
-export { createUser, getUserById, getUserByFriendCode, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship, getAvatarRerolls, incrementAvatarReroll, getAvatarSeed, setAvatarSeed, hasUnlimitedRerolls, getAvatarRerollsRemaining, MAX_DAILY_REROLLS } from './users';
+export { createUser, getUserById, getUserByFriendCode, canChangeUsername, updateUsername, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship, getAvatarRerolls, incrementAvatarReroll, getAvatarSeed, setAvatarSeed, hasUnlimitedRerolls, getAvatarRerollsRemaining, MAX_DAILY_REROLLS } from './users';
 
 // Re-export board functions
-export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember, createBoardInvite, getBoardInvitesToUser, getBoardInvitesFromUser, acceptBoardInvite, acceptBoardInviteForUser, declineBoardInvite, declineBoardInviteForUser, cancelBoardInvite, cancelBoardInviteForUser, isInvitedToBoard } from './boards';
+export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, transferBoardOwnership, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember, createBoardInvite, getBoardInvitesToUser, getBoardInvitesFromUser, acceptBoardInvite, acceptBoardInviteForUser, declineBoardInvite, declineBoardInviteForUser, cancelBoardInvite, cancelBoardInviteForUser, isInvitedToBoard } from './boards';
 
 // Re-export project functions
 export { getProjectsByBoardId, getAllProjects, getProjectById, createProject, updateProject, toggleSubtask, deleteProject, deleteSubtask, assignProject, assignSubtask } from './projects';

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/auth-context';
 import PasskeyLogin from './PasskeyLogin';
+import ThemeToggle from './ThemeToggle';
 
 interface AvatarOption {
   dataUri: string;
@@ -16,6 +17,10 @@ export default function UserMenu() {
   const [showPreview, setShowPreview] = useState(false);
   const [avatarOptions, setAvatarOptions] = useState<AvatarOption[]>([]);
   const [rerolling, setRerolling] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,6 +80,40 @@ export default function UserMenu() {
     setRerolling(false);
   };
 
+  const startNameEdit = () => {
+    if (!user?.canChangeUsername) return;
+    setNameDraft(user.name);
+    setNameError('');
+    setEditingName(true);
+  };
+
+  const saveName = async () => {
+    if (!nameDraft.trim() || savingName) return;
+    setSavingName(true);
+    setNameError('');
+
+    try {
+      const response = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nameDraft.trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setNameError(data.error || 'Failed to update username');
+        return;
+      }
+
+      await checkSession();
+      setEditingName(false);
+    } catch (err) {
+      setNameError('Failed to update username');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="w-9 h-9 rounded-full bg-[var(--panel-strong)] border border-[var(--border)] animate-pulse" />
@@ -91,16 +130,15 @@ export default function UserMenu() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setShowMenu(!showMenu)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--panel)] border border-[var(--border)] hover:bg-[var(--panel-strong)] transition-all"
+        aria-label={user?.name ? `Open profile menu for ${user.name}` : 'Open profile menu'}
+        title={user?.name || 'Profile'}
+        className="w-10 h-10 inline-flex items-center justify-center rounded-full bg-[var(--panel)] border border-[var(--border)] hover:bg-[var(--panel-strong)] transition-all shadow-[0_6px_14px_rgba(17,17,17,0.04)]"
       >
         <img
           src={user?.avatar}
           alt={user?.name || 'User'}
-          className="w-7 h-7 rounded-full"
+          className="w-8 h-8 rounded-full"
         />
-        <span className="text-sm font-medium text-[var(--foreground)] hidden sm:inline">
-          {user?.name}
-        </span>
       </motion.button>
 
       <AnimatePresence>
@@ -119,17 +157,59 @@ export default function UserMenu() {
                   className="w-10 h-10 rounded-full"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--foreground)] truncate">
-                    {user?.name}
-                  </p>
+                  {editingName ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void saveName();
+                          if (e.key === 'Escape') setEditingName(false);
+                        }}
+                        className="min-w-0 flex-1 px-2 py-1 rounded-md bg-[var(--panel-strong)] border border-[var(--border)] text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/50"
+                        maxLength={40}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void saveName()}
+                        disabled={savingName}
+                        className="px-2 py-1 rounded-md bg-[var(--accent)] text-white text-xs font-medium disabled:opacity-50"
+                        title="Save username"
+                      >
+                        ✓
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <p className="min-w-0 flex-1 text-sm font-medium text-[var(--foreground)] truncate">
+                        {user?.name}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={startNameEdit}
+                        disabled={!user?.canChangeUsername}
+                        className="w-6 h-6 inline-flex items-center justify-center rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--panel-strong)] disabled:opacity-35 disabled:cursor-not-allowed"
+                        title={user?.canChangeUsername ? 'Change username' : 'Username can be changed once per day'}
+                        aria-label="Change username"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
                   {user?.email && (
                     <p className="text-xs text-[var(--muted)] truncate">{user.email}</p>
+                  )}
+                  {nameError && (
+                    <p className="text-xs text-red-600 mt-1">{nameError}</p>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="p-2 space-y-1">
+              <ThemeToggle variant="menu" />
+
               <button
                 onClick={handleRerollAvatar}
                 disabled={rerolling || (!(user?.avatarRerollsUnlimited ?? false) && (user?.avatarRerollsRemaining ?? 0) <= 0)}

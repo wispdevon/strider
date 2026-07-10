@@ -6,6 +6,7 @@ interface User {
   id: string;
   name: string;
   email: string | null;
+  friendCode: string;
   avatar: string;
 }
 

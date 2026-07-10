@@ -3,7 +3,7 @@
  */
 
 import { getDb, generateCode, generatePin, hashPassword } from './db-core';
-import type { Board, BoardWithProjects, BoardRow, Project, ProjectRow, BoardMember, BoardMemberRow } from './types';
+import type { Board, BoardWithProjects, BoardRow, Project, ProjectRow, BoardMember, BoardMemberRow, BoardInviteRow } from './types';
 
 // Board functions
 export function getAllBoards(): Board[] {
@@ -242,5 +242,126 @@ export function removeBoardMember(boardId: string, userId: string): boolean {
 export function isBoardMember(boardId: string, userId: string): boolean {
   const db = getDb();
   const row = db.prepare('SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?').get(boardId, userId);
+  return !!row;
+}
+
+// Board Invite functions
+export function createBoardInvite(boardId: string, fromUserId: string, toUserId: string): string {
+  const db = getDb();
+  const id = `invite-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  
+  // Check if invite already exists
+  const existing = db.prepare(
+    'SELECT id FROM board_invites WHERE board_id = ? AND from_user_id = ? AND to_user_id = ? AND status = ?'
+  ).get(boardId, fromUserId, toUserId, 'pending') as { id: string } | undefined;
+  
+  if (existing) {
+    return existing.id;
+  }
+  
+  db.prepare(`
+    INSERT INTO board_invites (id, board_id, from_user_id, to_user_id, status)
+    VALUES (@id, @boardId, @fromUserId, @toUserId, @status)
+  `).run({ id, boardId, fromUserId, toUserId, status: 'pending' });
+  
+  return id;
+}
+
+export function getBoardInvitesToUser(userId: string) {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT bi.*, b.name as board_name, b.slug as board_slug, b.join_code as board_join_code,
+           u.name as from_name, u.friend_code as from_friend_code
+    FROM board_invites bi
+    INNER JOIN boards b ON b.id = bi.board_id
+    INNER JOIN users u ON u.id = bi.from_user_id
+    WHERE bi.to_user_id = ? AND bi.status = 'pending'
+    ORDER BY bi.created_at DESC
+  `).all(userId) as any[];
+  
+  return rows.map((row) => ({
+    id: row.id,
+    boardId: row.board_id,
+    fromUserId: row.from_user_id,
+    toUserId: row.to_user_id,
+    status: row.status,
+    createdAt: row.created_at,
+    board: {
+      id: row.board_id,
+      name: row.board_name,
+      slug: row.board_slug,
+      joinCode: row.board_join_code
+    },
+    fromUser: {
+      id: row.from_user_id,
+      name: row.from_name,
+      friendCode: row.from_friend_code
+    }
+  }));
+}
+
+export function getBoardInvitesFromUser(userId: string, boardId: string) {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT bi.*, u.name as to_name, u.friend_code as to_friend_code
+    FROM board_invites bi
+    INNER JOIN users u ON u.id = bi.to_user_id
+    WHERE bi.from_user_id = ? AND bi.board_id = ? AND bi.status = 'pending'
+    ORDER BY bi.created_at DESC
+  `).all(userId, boardId) as any[];
+  
+  return rows.map((row) => ({
+    id: row.id,
+    boardId: row.board_id,
+    fromUserId: row.from_user_id,
+    toUserId: row.to_user_id,
+    status: row.status,
+    createdAt: row.created_at,
+    toUser: {
+      id: row.to_user_id,
+      name: row.to_name,
+      friendCode: row.to_friend_code
+    }
+  }));
+}
+
+export function acceptBoardInvite(inviteId: string): boolean {
+  const db = getDb();
+  const invite = db.prepare('SELECT * FROM board_invites WHERE id = ?').get(inviteId) as any;
+  
+  if (!invite) return false;
+  
+  // Add user as board member
+  addBoardMember(invite.board_id, invite.to_user_id, 'editor');
+  
+  // Update invite status
+  db.prepare('UPDATE board_invites SET status = ? WHERE id = ?').run('accepted', inviteId);
+  
+  return true;
+}
+
+export function declineBoardInvite(inviteId: string): boolean {
+  const db = getDb();
+  const result = db.prepare('UPDATE board_invites SET status = ? WHERE id = ? AND status = ?').run('declined', inviteId, 'pending');
+  return result.changes > 0;
+}
+
+export function cancelBoardInvite(inviteId: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM board_invites WHERE id = ? AND status = ?').run(inviteId, 'pending');
+  return result.changes > 0;
+}
+
+export function deleteBoardInvite(inviteId: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM board_invites WHERE id = ?').run(inviteId);
+  return result.changes > 0;
+}
+
+export function isInvitedToBoard(boardId: string, userId: string): boolean {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT 1 FROM board_invites WHERE board_id = ? AND to_user_id = ? AND status = ?'
+  ).get(boardId, userId, 'pending');
   return !!row;
 }

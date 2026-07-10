@@ -6,6 +6,8 @@ import ProjectCard from './ProjectCard';
 import { Project, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useState, useEffect } from 'react';
 import UserMenu from './UserMenu';
+import FriendsList from './FriendsList';
+import InviteFriendsModal from './InviteFriendsModal';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -53,6 +55,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   });
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [editName, setEditName] = useState('');
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   useEffect(() => {
     loadBoard();
@@ -219,7 +222,15 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               </div>
             )}
             
-            <UserMenu />
+            <FriendsList />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2 rounded-lg font-medium bg-[var(--panel)] text-[var(--foreground)] border border-[var(--border)] hover:bg-[var(--panel-strong)] shadow-[0_6px_14px_rgba(17,17,17,0.04)] transition-all duration-300"
+            >
+              📧 Invite Friends
+            </motion.button>
             {doneCount > 0 && (
               <Link
                 href={`/board/${board.slug}/hall-of-fame`}
@@ -241,6 +252,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
             >
               + New project
             </motion.button>
+
+            <UserMenu />
           </div>
         </div>
       </motion.header>
@@ -392,6 +405,13 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Invite Friends Modal */}
+      <InviteFriendsModal
+        boardSlug={boardSlug}
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+      />
 
       {/* Board */}
       <div className="max-w-full mx-auto px-6 pb-12">

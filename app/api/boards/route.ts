@@ -62,42 +62,50 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { name, password, passkeyRequired } = body;
+  try {
+    const body = await request.json();
+    const { name, password, passkeyRequired } = body;
 
-  if (!name) {
-    return NextResponse.json({ error: 'Board name is required' }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: 'Board name is required' }, { status: 400 });
+    }
+
+    // Check if user is authenticated to set as owner
+    const session = await getSession();
+    
+    // If passkeyRequired is true, user must be authenticated
+    if (passkeyRequired && !session?.userId) {
+      return NextResponse.json({ error: 'Authentication required for passkey-bound boards' }, { status: 401 });
+    }
+    
+    const ownerId = session?.userId || undefined;
+
+    const board = createBoard({ name, password, ownerId, passkeyRequired: !!passkeyRequired });
+
+    // If user is authenticated and owns the board, also add them as a member
+    if (session?.userId && board.ownerId === session.userId) {
+      addBoardMember(board.id, session.userId, 'owner');
+    }
+
+    // Return the board with the authorPin (only time it's exposed)
+    return NextResponse.json({
+      id: board.id,
+      name: board.name,
+      slug: board.slug,
+      joinCode: board.joinCode,
+      authorPin: board.authorPin,
+      hasPassword: !!board.passwordHash,
+      passkeyRequired: board.passkeyRequired,
+      ownerId: board.ownerId,
+      createdAt: board.createdAt
+    }, { status: 201 });
+  } catch (error) {
+    console.error('POST /api/boards error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create board' },
+      { status: 500 }
+    );
   }
-
-  // Check if user is authenticated to set as owner
-  const session = await getSession();
-  
-  // If passkeyRequired is true, user must be authenticated
-  if (passkeyRequired && !session?.userId) {
-    return NextResponse.json({ error: 'Authentication required for passkey-bound boards' }, { status: 401 });
-  }
-  
-  const ownerId = session?.userId || undefined;
-
-  const board = createBoard({ name, password, ownerId, passkeyRequired: !!passkeyRequired });
-
-  // If user is authenticated and owns the board, also add them as a member
-  if (session?.userId && board.ownerId === session.userId) {
-    addBoardMember(board.id, session.userId, 'owner');
-  }
-
-  // Return the board with the authorPin (only time it's exposed)
-  return NextResponse.json({
-    id: board.id,
-    name: board.name,
-    slug: board.slug,
-    joinCode: board.joinCode,
-    authorPin: board.authorPin,
-    hasPassword: !!board.passwordHash,
-    passkeyRequired: board.passkeyRequired,
-    ownerId: board.ownerId,
-    createdAt: board.createdAt
-  }, { status: 201 });
 }
 
 // Join board by code

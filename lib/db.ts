@@ -21,7 +21,7 @@ export { getDb, generateCode, generatePin, hashPassword } from './db-core';
 export { createUser, getUserById, getUserByFriendCode, savePasskeyCredential, getPasskeyByCredentialId, updatePasskeyCounter, getPasskeysByUserId, createFriendship, getFriendsByUserId, getIncomingFriendRequests, getOutgoingFriendRequests, acceptFriendship, rejectFriendship, cancelOutgoingFriendship, updateFriendshipStatus, deleteFriendship } from './users';
 
 // Re-export board functions
-export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember } from './boards';
+export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember, createBoardInvite, getBoardInvitesToUser, getBoardInvitesFromUser, acceptBoardInvite, declineBoardInvite, cancelBoardInvite, isInvitedToBoard } from './boards';
 
 // Re-export project functions
 export { getProjectsByBoardId, getAllProjects, createProject, updateProject, toggleSubtask, deleteProject, deleteSubtask, assignProject, assignSubtask } from './projects';

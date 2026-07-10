@@ -24,4 +24,4 @@ export { createUser, getUserById, savePasskeyCredential, getPasskeyByCredentialI
 export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember } from './boards';
 
 // Re-export project functions
-export { getProjectsByBoardId, getAllProjects, createProject, updateProject, toggleSubtask, deleteProject, deleteSubtask } from './projects';
+export { getProjectsByBoardId, getAllProjects, createProject, updateProject, toggleSubtask, deleteProject, deleteSubtask, assignProject, assignSubtask } from './projects';

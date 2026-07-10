@@ -7,10 +7,10 @@ import { generateAvatarDataUri } from '@/lib/avatar';
 
 export const dynamic = 'force-dynamic';
 
-// Get board details by slug
+// Get board details by slug or ID
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const board = getBoardBySlug(id);
+  const board = getBoardBySlug(id) || getAllBoards().find(b => b.id === id) || null;
   
   if (!board) {
     return NextResponse.json({ error: 'Board not found' }, { status: 404 });

@@ -6,6 +6,7 @@ export interface Subtask {
   id: string;
   title: string;
   done: boolean;
+  assigneeId?: string | null;
 }
 
 export interface Project {
@@ -17,6 +18,7 @@ export interface Project {
   category: string;
   subtasks: Subtask[];
   boardId: string;
+  assigneeId?: string | null;
 }
 
 export interface Board {
@@ -39,6 +41,7 @@ export interface User {
   id: string;
   name: string;
   email: string | null;
+  friendCode: string;
   createdAt: string;
 }
 
@@ -76,12 +79,14 @@ export interface ProjectRow {
   category: string;
   subtasks: string;
   board_id: string;
+  assignee_id: string | null;
 }
 
 export interface UserRow {
   id: string;
   name: string;
   email: string | null;
+  friend_code: string;
   created_at: string;
 }
 

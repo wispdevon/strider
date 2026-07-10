@@ -19,9 +19,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
-import { Project, Subtask, useProjects } from '@/lib/useProjects';
+import { Project, Subtask, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useEffect, useState } from 'react';
 import SegmentedProgress from './SegmentedProgress';
+import AssigneeSelector from './AssigneeSelector';
 
 const STAGES = [
   { key: 'idea', label: 'Idea' },
@@ -38,9 +39,11 @@ interface ProjectDetailProps {
 interface SortableSubtaskProps {
   subtask: Subtask;
   onToggle: () => void;
+  members?: BoardMemberInfo[];
+  onAssign?: (userId: string | null) => void;
 }
 
-function SortableSubtask({ subtask, onToggle }: SortableSubtaskProps) {
+function SortableSubtask({ subtask, onToggle, members, onAssign }: SortableSubtaskProps) {
   const {
     attributes,
     listeners,
@@ -86,7 +89,7 @@ function SortableSubtask({ subtask, onToggle }: SortableSubtaskProps) {
       {/* Checkbox */}
       <button
         onClick={onToggle}
-        className={`w-5 h-5 rounded border-2 flex items-center justify-center font-bold transition-colors ${
+        className={`w-5 h-5 rounded border-2 flex items-center justify-center font-bold transition-colors shrink-0 ${
           subtask.done
             ? 'bg-[#7a7c82] border-[#7a7c82] text-white'
             : 'border-[var(--muted)] hover:border-[var(--accent)]'
@@ -97,15 +100,26 @@ function SortableSubtask({ subtask, onToggle }: SortableSubtaskProps) {
 
       {/* Title */}
       <span className="flex-1 font-medium">{subtask.title}</span>
+
+      {/* Assignee selector */}
+      {members && members.length > 0 && onAssign && (
+        <AssigneeSelector
+          members={members}
+          assigneeId={subtask.assigneeId}
+          onAssign={onAssign}
+          size="sm"
+        />
+      )}
     </div>
   );
 }
 
 export default function ProjectDetail({ slug }: ProjectDetailProps) {
-  const { projects, isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, getProjectProgress } = useProjects();
+  const { projects, isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects();
   const [project, setProject] = useState<Project | null>(null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [showAddSubtask, setShowAddSubtask] = useState(false);
+  const [members, setMembers] = useState<BoardMemberInfo[]>([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -119,6 +133,26 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
       setProject(getProjectBySlug(slug) || null);
     }
   }, [isLoaded, slug, projects]);
+
+  // Fetch board members when project is loaded
+  useEffect(() => {
+    if (project?.boardId) {
+      fetch(`/api/boards/${project.boardId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then((data: { members?: Array<{ id: string; userId: string; name: string; avatar: string | null; role: string }> }) => {
+          if (data?.members) {
+            setMembers(data.members.map((m) => ({
+              id: m.id,
+              userId: m.userId,
+              name: m.name,
+              avatar: m.avatar,
+              role: m.role
+            })));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [project?.boardId]);
 
   if (!isLoaded || !project) {
     return (
@@ -137,6 +171,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const progress = getProjectProgress(project);
   const completedSubtasks = project.subtasks.filter((s) => s.done).length;
   const currentStageIndex = STAGES.findIndex((s) => s.key === project.stage);
+  const hasMembers = members.length > 0;
 
   const handleMoveStage = (direction: 'forward' | 'back') => {
     let newIndex = currentStageIndex;
@@ -165,6 +200,10 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
       const newSubtasks = arrayMove(project.subtasks, oldIndex, newIndex);
       updateProject(project.id, { subtasks: newSubtasks });
     }
+  };
+
+  const handleAssignProject = (userId: string | null) => {
+    updateProject(project.id, { assigneeId: userId });
   };
 
   return (
@@ -199,6 +238,17 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
               <h1 className="hero-title text-[var(--foreground)] text-4xl md:text-5xl mt-2">{project.title}</h1>
               <p className="text-[var(--muted)] mt-3 text-lg">{project.note}</p>
             </div>
+            {hasMembers && (
+              <div className="ml-4">
+                <AssigneeSelector
+                  members={members}
+                  assigneeId={project.assigneeId}
+                  onAssign={handleAssignProject}
+                  size="md"
+                  label="Assign"
+                />
+              </div>
+            )}
           </div>
 
           {/* Progress Section with Segmented Bar */}
@@ -307,6 +357,8 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                         key={subtask.id}
                         subtask={subtask}
                         onToggle={() => toggleSubtask(project.id, subtask.id)}
+                        members={hasMembers ? members : undefined}
+                        onAssign={hasMembers ? (userId) => assignSubtask(project.id, subtask.id, userId) : undefined}
                       />
                     ))}
                   </AnimatePresence>

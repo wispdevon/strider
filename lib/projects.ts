@@ -18,7 +18,8 @@ export function getProjectsByBoardId(boardId: string): Project[] {
     stage: row.stage,
     category: row.category,
     subtasks: JSON.parse(row.subtasks) as Subtask[],
-    boardId: row.board_id
+    boardId: row.board_id,
+    assigneeId: row.assignee_id ?? null
   }));
 }
 
@@ -34,7 +35,8 @@ export function getAllProjects(): Project[] {
     stage: row.stage,
     category: row.category,
     subtasks: JSON.parse(row.subtasks) as Subtask[],
-    boardId: row.board_id
+    boardId: row.board_id,
+    assigneeId: row.assignee_id ?? null
   }));
 }
 
@@ -98,7 +100,7 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
   const db = getDb();
   db.prepare(`
     UPDATE projects
-    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks
+    SET slug = @slug, title = @title, note = @note, stage = @stage, category = @category, subtasks = @subtasks, assignee_id = @assigneeId
     WHERE id = @id
   `).run({
     id,
@@ -107,10 +109,40 @@ export function updateProject(id: string, updates: Partial<Project>): Project | 
     note: merged.note,
     stage: merged.stage,
     category: merged.category,
-    subtasks: JSON.stringify(merged.subtasks)
+    subtasks: JSON.stringify(merged.subtasks),
+    assigneeId: merged.assigneeId ?? null
   });
 
   return merged;
+}
+
+/**
+ * Assign a user to a project (task-level assignment).
+ * Pass null to unassign.
+ */
+export function assignProject(projectId: string, userId: string | null): Project | null {
+  const current = getAllProjects().find((project) => project.id === projectId);
+  if (!current) return null;
+
+  const db = getDb();
+  db.prepare('UPDATE projects SET assignee_id = ? WHERE id = ?').run(userId, projectId);
+
+  return { ...current, assigneeId: userId };
+}
+
+/**
+ * Assign a user to a specific subtask.
+ * Pass null to unassign.
+ */
+export function assignSubtask(projectId: string, subtaskId: string, userId: string | null): Project | null {
+  const current = getAllProjects().find((project) => project.id === projectId);
+  if (!current) return null;
+
+  const updatedSubtasks = current.subtasks.map((subtask) =>
+    subtask.id === subtaskId ? { ...subtask, assigneeId: userId } : subtask
+  );
+
+  return updateProject(projectId, { subtasks: updatedSubtasks });
 }
 
 export function toggleSubtask(projectId: string, subtaskId: string): Project | null {

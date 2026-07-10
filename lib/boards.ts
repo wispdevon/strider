@@ -68,7 +68,8 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
     stage: projRow.stage,
     category: projRow.category,
     subtasks: JSON.parse(projRow.subtasks) as Project['subtasks'],
-    boardId: projRow.board_id
+    boardId: projRow.board_id,
+    assigneeId: projRow.assignee_id ?? null
   }));
 
   return { ...board, projects };

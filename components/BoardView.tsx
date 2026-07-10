@@ -3,10 +3,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import ProjectCard from './ProjectCard';
-import { Project, useProjects } from '@/lib/useProjects';
+import { Project, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useState, useEffect } from 'react';
 import UserMenu from './UserMenu';
-import BoardSettings from './BoardSettings';
 
 const STAGES = [
   { key: 'planning', label: 'Plan' },
@@ -45,9 +44,6 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   const [board, setBoard] = useState<BoardInfo | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deletePin, setDeletePin] = useState('');
-  const [deleteError, setDeleteError] = useState('');
   const [formData, setFormData] = useState({
     title: '',
     note: '',
@@ -55,6 +51,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     subtasks: '',
     category: ''
   });
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [editName, setEditName] = useState('');
 
   useEffect(() => {
     loadBoard();
@@ -122,6 +120,10 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     updateProject(projectId, { stage: STAGES[newIndex].key as any });
   };
 
+  const handleAssignProject = (projectId: string, userId: string | null) => {
+    updateProject(projectId, { assigneeId: userId });
+  };
+
   const handleAddProject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) return;
@@ -142,29 +144,6 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     });
     setShowForm(false);
     loadBoard();
-  };
-
-  const handleDeleteBoard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setDeleteError('');
-
-    try {
-      const response = await fetch(`/api/boards/${board.slug}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: deletePin })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        window.location.href = '/';
-      } else {
-        setDeleteError(data.error || 'Failed to delete board');
-      }
-    } catch (error) {
-      setDeleteError('Failed to delete board');
-    }
   };
 
   const summary = {
@@ -193,7 +172,16 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">
                 Code: {board.joinCode}
               </p>
-              <h1 className="hero-title text-[var(--foreground)] text-2xl md:text-3xl mt-1">{board.name}</h1>
+              <h1
+                className="hero-title text-[var(--foreground)] text-2xl md:text-3xl mt-1 cursor-pointer hover:text-[var(--accent)] transition-colors"
+                onClick={() => {
+                  setEditName(board.name);
+                  setShowRenameModal(true);
+                }}
+                title="Click to rename"
+              >
+                {board.name}
+              </h1>
             </div>
           </div>
 
@@ -232,13 +220,6 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
             )}
             
             <UserMenu />
-            {board && (
-              <BoardSettings
-                boardId={board.id}
-                boardName={board.name}
-                isOwner={board.isOwner || false}
-              />
-            )}
             {doneCount > 0 && (
               <Link
                 href={`/board/${board.slug}/hall-of-fame`}
@@ -247,15 +228,6 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                 🏆 Hall of Fame ({doneCount})
               </Link>
             )}
-
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowDeleteModal(true)}
-              className="px-4 py-2 rounded-lg font-medium bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all duration-300"
-            >
-              Delete Board
-            </motion.button>
 
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -272,71 +244,6 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
           </div>
         </div>
       </motion.header>
-
-      {/* Delete Board Modal */}
-      <AnimatePresence>
-        {showDeleteModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4"
-            onClick={() => setShowDeleteModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-8 max-w-md w-full shadow-2xl"
-            >
-              <div className="text-center mb-6">
-                <span className="text-5xl">⚠️</span>
-                <h2 className="text-2xl font-bold text-[var(--foreground)] mt-4">Delete Board?</h2>
-                <p className="text-[var(--muted)] mt-2">
-                  This will permanently delete "{board.name}" and all its projects.
-                </p>
-              </div>
-
-              <form onSubmit={handleDeleteBoard}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-[var(--foreground)] mb-2">
-                    Enter Author PIN to confirm
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="6-digit PIN"
-                    value={deletePin}
-                    onChange={(e) => setDeletePin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-3 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:border-red-500/40 font-mono text-center text-2xl tracking-widest"
-                    maxLength={6}
-                    required
-                  />
-                  {deleteError && (
-                    <p className="text-red-500 text-sm mt-2">{deleteError}</p>
-                  )}
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteModal(false)}
-                    className="flex-1 px-4 py-3 rounded-lg bg-[var(--panel-strong)] text-[var(--foreground)] font-medium hover:bg-[var(--panel)] transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-3 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors"
-                  >
-                    Delete Board
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Form */}
       <AnimatePresence>
@@ -421,6 +328,71 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         ))}
       </motion.div>
 
+      {/* Rename Modal */}
+      <AnimatePresence>
+        {showRenameModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4"
+            onClick={() => setShowRenameModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Rename Board</h2>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!editName.trim() || !board) return;
+                  try {
+                    const response = await fetch(`/api/boards/${board.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name: editName.trim() }),
+                    });
+                    if (response.ok) {
+                      setBoard({ ...board, name: editName.trim() });
+                      setShowRenameModal(false);
+                    }
+                  } catch (err) {
+                    console.error('Failed to rename board:', err);
+                  }
+                }}
+              >
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/40 mb-4"
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRenameModal(false)}
+                    className="flex-1 px-4 py-2 rounded-lg bg-[var(--panel-strong)] text-[var(--foreground)] font-medium hover:bg-[var(--panel)] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent)]/90 transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Board */}
       <div className="max-w-full mx-auto px-6 pb-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -459,6 +431,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                             progress={getProjectProgress(project)}
                             onMove={(direction) => handleMoveProject(project.id, direction)}
                             onDelete={() => deleteProject(project.id)}
+                            members={board.members as BoardMemberInfo[] | undefined}
+                            onAssignProject={(userId) => handleAssignProject(project.id, userId)}
                           />
                         ))
                       ) : (

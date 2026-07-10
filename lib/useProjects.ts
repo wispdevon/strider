@@ -6,6 +6,7 @@ export interface Subtask {
   id: string;
   title: string;
   done: boolean;
+  assigneeId?: string | null;
 }
 
 export interface Project {
@@ -17,6 +18,15 @@ export interface Project {
   category: string;
   subtasks: Subtask[];
   boardId?: string;
+  assigneeId?: string | null;
+}
+
+export interface BoardMemberInfo {
+  id: string;
+  userId: string;
+  name: string;
+  avatar: string | null;
+  role: string;
 }
 
 export function useProjects() {
@@ -92,6 +102,19 @@ export function useProjects() {
     setProjects((current) => current.map((project) => (project.id === projectId ? updated : project)));
   };
 
+  const assignSubtask = async (projectId: string, subtaskId: string, assigneeId: string | null) => {
+    const response = await fetch(`/api/projects/${projectId}/subtasks/${subtaskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'assign', assigneeId })
+    });
+
+    if (!response.ok) return;
+
+    const updated = (await response.json()) as Project;
+    setProjects((current) => current.map((project) => (project.id === projectId ? updated : project)));
+  };
+
   const deleteProject = async (id: string) => {
     const response = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
     if (!response.ok) return;
@@ -127,6 +150,7 @@ export function useProjects() {
     addProject,
     updateProject,
     toggleSubtask,
+    assignSubtask,
     deleteProject,
     addSubtask,
     getProjectBySlug,

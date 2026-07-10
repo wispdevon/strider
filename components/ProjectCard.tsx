@@ -2,17 +2,21 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Project } from '@/lib/useProjects';
+import { Project, BoardMemberInfo } from '@/lib/useProjects';
+import AssigneeSelector from './AssigneeSelector';
 
 interface ProjectCardProps {
   project: Project;
   progress: number;
   onMove: (direction: 'forward' | 'back') => void;
   onDelete: () => void;
+  members?: BoardMemberInfo[];
+  onAssignProject?: (userId: string | null) => void;
 }
 
-export default function ProjectCard({ project, progress, onMove, onDelete }: ProjectCardProps) {
+export default function ProjectCard({ project, progress, onMove, onDelete, members, onAssignProject }: ProjectCardProps) {
   const completedSubtasks = project.subtasks.filter((s) => s.done).length;
+  const hasMembers = members && members.length > 0;
 
   return (
     <motion.div
@@ -29,7 +33,17 @@ export default function ProjectCard({ project, progress, onMove, onDelete }: Pro
           <h3 className="text-[var(--foreground)] font-bold text-sm mt-1">{project.title}</h3>
           <p className="text-[var(--muted)] text-xs mt-1 line-clamp-2">{project.note}</p>
         </div>
-        <span className="text-[var(--accent)] font-mono text-xs ml-2">{progress}%</span>
+        <div className="flex items-center gap-2 ml-2">
+          {hasMembers && onAssignProject && (
+            <AssigneeSelector
+              members={members}
+              assigneeId={project.assigneeId}
+              onAssign={onAssignProject}
+              size="sm"
+            />
+          )}
+          <span className="text-[var(--accent)] font-mono text-xs">{progress}%</span>
+        </div>
       </div>
 
       <div className="space-y-3 mt-3">

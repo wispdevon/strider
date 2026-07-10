@@ -63,6 +63,7 @@ function initializeDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT,
+      friend_code TEXT UNIQUE NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -108,6 +109,22 @@ function initializeDb() {
     );
   `);
 
+  // Boards must be created before board_members and board_invites (foreign key dependency)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS boards (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      join_code TEXT UNIQUE NOT NULL,
+      password_hash TEXT,
+      author_pin TEXT NOT NULL,
+      owner_id TEXT,
+      passkey_required INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS board_members (
       id TEXT PRIMARY KEY,
@@ -148,26 +165,29 @@ function initializeDb() {
     );
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS boards (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      slug TEXT UNIQUE NOT NULL,
-      join_code TEXT UNIQUE NOT NULL,
-      password_hash TEXT,
-      author_pin TEXT NOT NULL,
-      owner_id TEXT,
-      passkey_required INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
-    );
-  `);
-
   // Add passkey_required column if it doesn't exist (migration)
   try {
     const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
     if (!columns.some(col => col.name === 'passkey_required')) {
       db.exec(`ALTER TABLE boards ADD COLUMN passkey_required INTEGER NOT NULL DEFAULT 0`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
+
+  // Add friend_code column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'friend_code')) {
+      db.exec(`ALTER TABLE users ADD COLUMN friend_code TEXT`);
+      // Generate friend codes for existing users
+      const users = db.prepare("SELECT id FROM users").all() as Array<{ id: string }>;
+      for (const u of users) {
+        const code = generateCode(8);
+        db.prepare("UPDATE users SET friend_code = ? WHERE id = ?").run(code, u.id);
+      }
+      // Make column NOT NULL after populating
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_friend_code ON users(friend_code)`);
     }
   } catch {
     // Column might already exist, ignore
@@ -183,10 +203,22 @@ function initializeDb() {
       category TEXT NOT NULL DEFAULT 'General',
       subtasks TEXT NOT NULL DEFAULT '[]',
       board_id TEXT NOT NULL,
+      assignee_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+      FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
     );
   `);
+
+  // Add assignee_id column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>;
+    if (columns.length > 0 && !columns.some(col => col.name === 'assignee_id')) {
+      db.exec(`ALTER TABLE projects ADD COLUMN assignee_id TEXT REFERENCES users(id) ON DELETE SET NULL`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
 
   const boardCount = db.prepare('SELECT COUNT(*) as count FROM boards').get() as { count: number };
   if (boardCount.count === 0) {

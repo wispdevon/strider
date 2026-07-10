@@ -44,11 +44,13 @@ function hasTrustedOrigin(request: NextRequest) {
 
   try {
     const originHost = new URL(origin).host;
-    const requestHost =
-      request.headers.get("x-forwarded-host") ||
-      request.headers.get("host") ||
-      request.nextUrl.host;
-    return originHost === requestHost;
+    const requestHosts = [
+      request.headers.get("host"),
+      request.headers.get("x-forwarded-host"),
+      request.nextUrl.host,
+    ].filter(Boolean);
+
+    return requestHosts.includes(originHost);
   } catch {
     return false;
   }

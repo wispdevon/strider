@@ -82,3 +82,17 @@ BoardInvite { id, boardId, inviterId, inviteeId, status: 'pending'|'accepted'|'d
 - **Default board:** "My Workspace" (slug: `my-workspace`, joinCode: `DEFAULT1`, pin: `123456`)
 - **Stage flow:** idea → planning → active → review → done
 - **Kanban columns:** Plan (idea+planning), Active (active), Review (review). Done → Hall of Fame.
+
+## Commit Style
+- Use Conventional Commit-style subjects: `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`.
+- Keep the type lower-case, followed by a concise imperative summary.
+- For larger commits, add a short bullet body after a blank line; bullets start with `- ` and summarize concrete changes.
+- Prefer focused commits grouped by purpose, e.g. code hardening separately from deployment docs.
+- Example:
+  ```text
+  fix: harden public API endpoints
+
+  - Enforce board-scoped read/write authorization for project APIs
+  - Scope board invites to the recipient/sender and accepted friends
+  - Add same-origin API mutation guard and broader rate limits
+  ```

@@ -148,6 +148,14 @@ The visual direction is documented in [DESIGN.md](DESIGN.md). Strider uses a cal
 - Keep `assigneeId` compatibility when changing assignment code; newer multi-assignment behavior uses `assigneeIds`.
 - Do not commit `.env`, `.env.local`, or the SQLite database.
 
+## Privacy
+
+Strider does not collect data beyond what is necessary to run boards, accounts, assignments, invites, passkeys, sessions, security, and service operations. See the in-app Privacy Policy at `/privacy` for the full policy.
+
+Production operators should protect the SQLite database, session secret, deployment environment, backups, and logs because they contain application data needed for the service to function.
+
 ## License
 
-Private project. Add a license before distributing or publishing outside the intended deployment.
+Strider is licensed under the [Apache License 2.0](LICENSE).
+
+Built by [Devon Labs](https://devonlabs.space).

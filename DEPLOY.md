@@ -111,18 +111,33 @@ Strider is configured for the supported Cloudflare Next.js adapter:
 - `open-next.config.ts`
 - Node 22+ via `.node-version` and `package.json` engines
 
-Use these commands for Cloudflare CI/CD:
+Use this deploy command for Cloudflare Workers Builds / CI/CD:
 
 ```bash
 npm ci
-npm run deploy:cloudflare
+npm run deploy
 ```
+
+If the Cloudflare dashboard asks for a Pages-style "build command" and "output
+directory", use Workers instead. This is a full-stack Next.js app using OpenNext
+on Workers, not a static Pages deployment.
 
 For a local production-like preview:
 
 ```bash
 npm run preview:cloudflare
 ```
+
+The GitHub Actions workflow at `.github/workflows/cloudflare.yml` builds the
+OpenNext bundle for every PR and deploys `main` when these repository secrets
+are present:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `SESSION_SECRET`
+- `RP_ID`
+- `RP_ORIGIN`
+- `SITE_URL`
 
 Cloudflare's older `@cloudflare/next-on-pages` package is deprecated and does
 not support this repo's Next.js 16 version range. The current Cloudflare path is

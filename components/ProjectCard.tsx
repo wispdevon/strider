@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useState } from 'react';
 import { Project, BoardMemberInfo } from '@/lib/useProjects';
 import AssigneeSelector from './AssigneeSelector';
 
@@ -12,6 +13,7 @@ interface ProjectCardProps {
   onDelete: () => void;
   members?: BoardMemberInfo[];
   onAssignProject?: (userIds: string[]) => void;
+  onUpdateProject?: (updates: Partial<Project>) => void;
   boardId?: string;
   isDragging?: boolean;
   isCompleting?: boolean;
@@ -26,6 +28,7 @@ export default function ProjectCard({
   onMove,
   members,
   onAssignProject,
+  onUpdateProject,
   boardId,
   isDragging = false,
   isCompleting = false,
@@ -35,6 +38,26 @@ export default function ProjectCard({
 }: ProjectCardProps) {
   const completedSubtasks = project.subtasks.filter((s) => s.done).length;
   const hasMembers = members && members.length > 0;
+  const [editingField, setEditingField] = useState<'title' | 'category' | null>(null);
+  const [draftValue, setDraftValue] = useState('');
+
+  const startEditing = (field: 'title' | 'category') => {
+    if (!onUpdateProject || isDragging) return;
+    setEditingField(field);
+    setDraftValue(field === 'title' ? project.title : project.category);
+  };
+
+  const commitEdit = () => {
+    if (!editingField || !onUpdateProject) return;
+    const trimmed = draftValue.trim();
+    const fallbackValue = editingField === 'title' ? project.title : project.category;
+    const nextValue = trimmed || fallbackValue;
+
+    if (nextValue !== fallbackValue) {
+      onUpdateProject({ [editingField]: nextValue });
+    }
+    setEditingField(null);
+  };
 
   return (
     <motion.div
@@ -63,8 +86,48 @@ export default function ProjectCard({
       )}
       <div className="flex justify-between items-start mb-2">
         <div className="flex-1">
-          <p className="text-[var(--accent)] text-xs font-semibold uppercase tracking-wider">{project.category}</p>
-          <h3 className="text-[var(--foreground)] font-bold text-sm mt-1">{project.title}</h3>
+          {editingField === 'category' ? (
+            <input
+              value={draftValue}
+              onChange={(event) => setDraftValue(event.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitEdit();
+                if (event.key === 'Escape') setEditingField(null);
+              }}
+              className="m-0 w-full border-0 bg-transparent p-0 text-xs font-semibold uppercase tracking-wider text-[var(--accent)] focus:outline-none"
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => startEditing('category')}
+              className="m-0 block w-full border-0 bg-transparent p-0 text-[var(--accent)] text-xs font-semibold uppercase tracking-wider text-left hover:opacity-80 transition-opacity"
+            >
+              {project.category}
+            </button>
+          )}
+          {editingField === 'title' ? (
+            <input
+              value={draftValue}
+              onChange={(event) => setDraftValue(event.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitEdit();
+                if (event.key === 'Escape') setEditingField(null);
+              }}
+              className="mt-1 m-0 w-full border-0 bg-transparent p-0 text-sm font-bold text-[var(--foreground)] focus:outline-none"
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => startEditing('title')}
+              className="mt-1 m-0 block w-full border-0 bg-transparent p-0 text-[var(--foreground)] font-bold text-sm text-left hover:text-[var(--accent)] transition-colors"
+            >
+              {project.title}
+            </button>
+          )}
           <p className="text-[var(--muted)] text-xs mt-1 line-clamp-2">{project.note}</p>
         </div>
         <div className="flex items-start ml-2 shrink-0">

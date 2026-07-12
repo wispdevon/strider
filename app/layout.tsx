@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -25,8 +25,29 @@ const codeFont = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.SITE_URL || process.env.RP_ORIGIN || "http://localhost:3000"),
   title: "Strider Flow - Project Flowboard",
-  description: "Visual project workspaces with dynamic progress tracking",
+  description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
+  applicationName: "Strider Flow",
+  openGraph: {
+    title: "Strider Flow - Work moves forward",
+    description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
+    siteName: "Strider Flow",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Strider Flow - Work moves forward",
+    description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#efece6" },
+    { media: "(prefers-color-scheme: dark)", color: "#151617" },
+  ],
 };
 
 export default function RootLayout({
@@ -59,8 +80,8 @@ export default function RootLayout({
           <main className="flex-1">
             {children}
           </main>
-          <footer className="animated-mosaic border-t border-[var(--border)] px-6 py-4 text-xs text-[var(--muted)]">
-            <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <footer className="border-t border-[var(--border)] bg-[var(--header-surface)] px-6 py-4 text-xs text-[var(--muted)]">
+            <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p>
                 Privacy: Strider does not collect data beyond what is necessary to run boards, accounts, assignments, and sessions.
               </p>

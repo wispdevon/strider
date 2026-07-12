@@ -12,7 +12,7 @@
  */
 
 // Re-export all types
-export type { Subtask, Project, Board, BoardWithProjects, User, PasskeyCredential, BoardRow, ProjectRow, UserRow, PasskeyRow, BoardMember, BoardMemberRow, Friendship, FriendshipRow } from './types';
+export type { Subtask, Project, DeletedProject, Board, BoardWithProjects, User, PasskeyCredential, BoardRow, ProjectRow, DeletedProjectRow, UserRow, PasskeyRow, BoardMember, BoardMemberRow, Friendship, FriendshipRow } from './types';
 
 // Re-export core functions
 export { getDb, generateCode, generatePin, hashPassword } from './db-core';
@@ -24,4 +24,4 @@ export { createUser, getUserById, getUserByFriendCode, canChangeUsername, update
 export { getAllBoards, getBoardsByOwnerId, getBoardBySlug, getBoardByJoinCode, createBoard, updateBoard, transferBoardOwnership, verifyBoardPassword, verifyAuthorPin, deleteBoard, addBoardMember, getBoardMembers, removeBoardMember, isBoardMember, createBoardInvite, getBoardInvitesToUser, getBoardInvitesFromUser, acceptBoardInvite, acceptBoardInviteForUser, declineBoardInvite, declineBoardInviteForUser, cancelBoardInvite, cancelBoardInviteForUser, isInvitedToBoard } from './boards';
 
 // Re-export project functions
-export { getProjectsByBoardId, getAllProjects, getProjectById, createProject, updateProject, toggleSubtask, deleteProject, deleteSubtask, assignProject, assignSubtask } from './projects';
+export { getProjectsByBoardId, getAllProjects, getProjectById, getDeletedProjectsByBoardId, createProject, updateProject, toggleSubtask, deleteProject, restoreDeletedProject, permanentlyDeleteArchivedProject, deleteSubtask, assignProject, assignSubtask } from './projects';

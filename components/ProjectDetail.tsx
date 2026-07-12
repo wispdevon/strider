@@ -5,7 +5,8 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -21,7 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Project, Subtask, useProjects, BoardMemberInfo } from '@/lib/useProjects';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AssigneeSelector from './AssigneeSelector';
 import FriendsList from './FriendsList';
 import UserMenu from './UserMenu';
@@ -195,17 +196,29 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
         aria-label="Delete subtask"
         title="Delete subtask"
       >
-        🔥
+        🗑️
       </button>
     </div>
   );
+}
+
+interface UndoSubtaskState {
+  projectId: string;
+  subtask: Subtask;
+  index: number;
 }
 
 export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const boardId = searchParams.get('boardId') || undefined;
-  const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(boardId);
+  const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(
+    boardId,
+    {
+      syncIntervalMs: 3000,
+      pauseWhenHidden: true
+    }
+  );
   const project = getProjectBySlug(slug) || null;
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [showAddSubtask, setShowAddSubtask] = useState(false);
@@ -213,9 +226,29 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const [board, setBoard] = useState<ProjectBoardInfo | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [undoSubtaskDeletion, setUndoSubtaskDeletion] = useState<UndoSubtaskState | null>(null);
+  const undoSubtaskTimerRef = useRef<number | null>(null);
+
+  const clearUndoSubtaskTimer = () => {
+    if (undoSubtaskTimerRef.current) {
+      window.clearTimeout(undoSubtaskTimerRef.current);
+      undoSubtaskTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => clearUndoSubtaskTimer(), []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 180,
+        tolerance: 10,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -319,10 +352,45 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
     });
   };
 
+  const handleUndoSubtaskDelete = () => {
+    if (!project || !undoSubtaskDeletion || undoSubtaskDeletion.projectId !== project.id) return;
+
+    clearUndoSubtaskTimer();
+    const restoredSubtasks = [...project.subtasks];
+    restoredSubtasks.splice(
+      Math.min(Math.max(undoSubtaskDeletion.index, 0), restoredSubtasks.length),
+      0,
+      undoSubtaskDeletion.subtask
+    );
+
+    void updateProject(project.id, { subtasks: restoredSubtasks });
+    setUndoSubtaskDeletion(null);
+  };
+
   const handleDeleteSubtask = (subtaskId: string) => {
+    if (!project) return;
+
+    const subtaskIndex = project.subtasks.findIndex((subtask) => subtask.id === subtaskId);
+    if (subtaskIndex === -1) return;
+
+    const deletedSubtask = project.subtasks[subtaskIndex];
+    const nextSubtasks = [...project.subtasks];
+    nextSubtasks.splice(subtaskIndex, 1);
+
     updateProject(project.id, {
-      subtasks: project.subtasks.filter((subtask) => subtask.id !== subtaskId),
+      subtasks: nextSubtasks,
     });
+
+    clearUndoSubtaskTimer();
+    setUndoSubtaskDeletion({
+      projectId: project.id,
+      subtask: deletedSubtask,
+      index: subtaskIndex,
+    });
+    undoSubtaskTimerRef.current = window.setTimeout(() => {
+      setUndoSubtaskDeletion(null);
+      undoSubtaskTimerRef.current = null;
+    }, 6000);
   };
 
   return (
@@ -352,6 +420,23 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
+        {undoSubtaskDeletion && (
+          <motion.div
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -10, opacity: 0 }}
+            className="mb-4 rounded-lg border border-[var(--accent)]/35 bg-[var(--accent-soft)] text-[var(--foreground)] px-4 py-2 text-sm flex items-center justify-between gap-3"
+          >
+            <span>Subtask deleted.</span>
+            <button
+              type="button"
+              onClick={handleUndoSubtaskDelete}
+              className="app-toolbar-button app-toolbar-button-primary px-3 py-1 text-xs h-auto"
+            >
+              Undo
+            </button>
+          </motion.div>
+        )}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={isCompleting ? {
@@ -527,22 +612,32 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => {
+              onClick={async () => {
                 if (!confirmingDelete) {
                   setConfirmingDelete(true);
                   window.setTimeout(() => setConfirmingDelete(false), 3500);
                   return;
                 }
 
-                deleteProject(project.id);
-                window.location.href = boardHref;
+                setIsDeleting(true);
+                const deleted = await deleteProject(project.id);
+                setIsDeleting(false);
+                if (!deleted) {
+                  window.alert('Failed to delete task');
+                  return;
+                }
+
+                router.push(boardHref);
               }}
+              disabled={isDeleting}
               aria-label={confirmingDelete ? 'Confirm delete task' : 'Delete task'}
               title={confirmingDelete ? 'Confirm delete task' : 'Delete task'}
               className="app-toolbar-button app-toolbar-button-danger transition-colors ml-auto"
             >
               <span aria-hidden="true">🔥</span>
-              <span className="hidden sm:inline">{confirmingDelete ? 'Confirm delete' : 'Delete task'}</span>
+              <span className="hidden sm:inline">
+                {isDeleting ? 'Deleting...' : confirmingDelete ? 'Confirm delete' : 'Delete task'}
+              </span>
             </motion.button>
           </motion.div>
         </motion.div>

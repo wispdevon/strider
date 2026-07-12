@@ -2,9 +2,9 @@
  * Shared authorization helpers for board-scoped resources.
  *
  * Boards follow a two-tier access model inherited from the boards API:
- *  - Public boards (no owner, no passkey, no password) are readable by anyone.
- *  - Passkey/password-protected boards require the user to be authenticated and
- *    a member (or the owner) to read or mutate.
+ *  - Public boards are explicitly opted in via `isPublic`.
+ *  - Non-public boards require the user to be authenticated and a member
+ *    (or the owner) to read or mutate.
  *
  * Mutations (create/update/delete projects & subtasks) always require an
  * authenticated member of the board.
@@ -21,6 +21,14 @@ function getBoardBySlugOrId(value: string) {
   return getBoardBySlug(value) || getAllBoards().find((board) => board.id === value) || null;
 }
 
+function isBoardProtected(board: Board | BoardWithProjects) {
+  return board.passkeyRequired || !!board.passwordHash;
+}
+
+function isBoardPublic(board: Board | BoardWithProjects) {
+  return board.isPublic;
+}
+
 /**
  * Authorize read access to a board's projects.
  * Returns the board plus the (possibly null) viewer identity.
@@ -31,7 +39,7 @@ export async function authorizeBoardRead(boardId: string): Promise<BoardAccess> 
     return { ok: false, status: 404, error: 'Board not found' };
   }
 
-  if (board.ownerId || board.passkeyRequired || board.passwordHash) {
+  if (!isBoardPublic(board) || isBoardProtected(board)) {
     const { userId } = (await getSession()) ?? {};
     if (!userId) {
       return { ok: false, status: 401, error: 'This board requires authentication' };
@@ -50,12 +58,18 @@ export async function authorizeBoardRead(boardId: string): Promise<BoardAccess> 
 }
 
 /**
- * Authorize a mutation on a board. Always requires an authenticated member.
+ * Authorize a mutation on a board. Public boards permit anonymous mutation.
  */
 export async function authorizeBoardWrite(boardId: string): Promise<BoardAccess> {
   const board = getBoardBySlugOrId(boardId);
   if (!board) {
     return { ok: false, status: 404, error: 'Board not found' };
+  }
+
+  if (isBoardPublic(board) && !isBoardProtected(board)) {
+    const { userId } = (await getSession()) ?? {};
+    const isMember = userId ? isBoardMember(board.id, userId) || board.ownerId === userId : false;
+    return { ok: true, userId: userId ?? null, isMember, board };
   }
 
   const { userId } = (await getSession()) ?? {};

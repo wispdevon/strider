@@ -25,6 +25,13 @@ export interface Project {
   sortOrder?: number;
 }
 
+export interface DeletedProject {
+  id: string;
+  boardId: string;
+  deletedAt: string;
+  project: Project;
+}
+
 export interface Board {
   id: string;
   name: string;
@@ -35,6 +42,7 @@ export interface Board {
   passwordHash: string | null;
   authorPin: string;
   ownerId: string | null;
+  isPublic: boolean;
   passkeyRequired: boolean;
   createdAt: string;
 }
@@ -75,6 +83,7 @@ export interface BoardRow {
   password_hash: string | null;
   author_pin: string;
   owner_id: string | null;
+  is_public: number;
   passkey_required: number;
   created_at: string;
 }
@@ -92,6 +101,13 @@ export interface ProjectRow {
   assignee_ids: string | null;
   completed_at: string | null;
   sort_order: number;
+}
+
+export interface DeletedProjectRow {
+  id: string;
+  board_id: string;
+  project_json: string;
+  deleted_at: string;
 }
 
 export interface UserRow {

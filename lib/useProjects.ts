@@ -2,6 +2,11 @@
 
 import { useState, useEffect } from 'react';
 
+type UseProjectsOptions = {
+  syncIntervalMs?: number;
+  pauseWhenHidden?: boolean;
+};
+
 export interface Subtask {
   id: string;
   title: string;
@@ -33,9 +38,11 @@ export interface BoardMemberInfo {
   role: string;
 }
 
-export function useProjects(boardId?: string) {
+export function useProjects(boardId?: string, options: UseProjectsOptions = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const { syncIntervalMs = 0, pauseWhenHidden = true } = options;
+  const normalizedSyncMs = syncIntervalMs > 0 ? syncIntervalMs : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -67,11 +74,46 @@ export function useProjects(boardId?: string) {
     };
 
     loadProjects();
+    if (!boardId || normalizedSyncMs <= 0) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let poller: number | null = null;
+    const poll = () => {
+      void loadProjects();
+    };
+
+    if (pauseWhenHidden && typeof document !== 'undefined') {
+      const onVisibility = () => {
+        if (!document.hidden) {
+          void loadProjects();
+        }
+      };
+      window.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('focus', onVisibility);
+      poller = window.setInterval(poll, normalizedSyncMs);
+
+      return () => {
+        cancelled = true;
+        if (poller) {
+          window.clearInterval(poller);
+        }
+        window.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('focus', onVisibility);
+      };
+    }
+
+    poller = window.setInterval(poll, normalizedSyncMs);
 
     return () => {
       cancelled = true;
+      if (poller) {
+        window.clearInterval(poller);
+      }
     };
-  }, [boardId]);
+  }, [boardId, normalizedSyncMs, pauseWhenHidden]);
 
   const addProject = async (title: string, note: string, stage: Project['stage'], subtasks: string[], category: string, boardId?: string) => {
     const response = await fetch('/api/projects', {
@@ -128,8 +170,9 @@ export function useProjects(boardId?: string) {
 
   const deleteProject = async (id: string) => {
     const response = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-    if (!response.ok) return;
+    if (!response.ok) return false;
     setProjects((current) => current.filter((project) => project.id !== id));
+    return true;
   };
 
   const addSubtask = async (projectId: string, title: string) => {

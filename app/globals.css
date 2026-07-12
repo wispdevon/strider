@@ -75,47 +75,85 @@ body {
 }
 
 [data-theme="dark"] .codex-agent-avatar {
-  filter: brightness(0) invert(1);
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
 }
 
-.animated-mosaic {
+[data-theme="dark"] .codex-agent-avatar-surface {
+  background-color: #181a1d;
+}
+
+.organic-censor-code {
   position: relative;
+  isolation: isolate;
   overflow: hidden;
-  background-color: var(--header-surface);
+  background-color: color-mix(in srgb, var(--panel-strong) 72%, #555b61 28%);
+  transition:
+    background-color 220ms ease,
+    box-shadow 220ms ease;
 }
 
-.animated-mosaic::before {
+.code-censor-text {
+  position: relative;
+  z-index: 1;
+  color: var(--accent);
+  font-family: var(--font-mono), "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  opacity: 0;
+  transition: opacity 180ms ease 90ms;
+}
+
+.organic-censor-code::after {
   content: "";
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  opacity: 0.42;
-  background-image:
-    linear-gradient(90deg, rgba(29, 31, 35, 0.08) 25%, transparent 25% 50%, rgba(29, 31, 35, 0.05) 50% 75%, transparent 75%),
-    linear-gradient(0deg, transparent 25%, rgba(29, 31, 35, 0.06) 25% 50%, transparent 50% 75%, rgba(29, 31, 35, 0.04) 75%);
-  background-size: 22px 22px, 22px 22px;
-  animation: mosaic-drift 18s linear infinite;
+  z-index: 2;
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent),
+    color-mix(in srgb, var(--panel-strong) 72%, #555b61 28%);
+  clip-path: circle(75% at 50% 50%);
+  transition:
+    clip-path 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease;
 }
 
-[data-theme="dark"] .animated-mosaic::before {
-  opacity: 0.26;
-  background-image:
-    linear-gradient(90deg, rgba(242, 240, 234, 0.1) 25%, transparent 25% 50%, rgba(242, 240, 234, 0.06) 50% 75%, transparent 75%),
-    linear-gradient(0deg, transparent 25%, rgba(242, 240, 234, 0.08) 25% 50%, transparent 50% 75%, rgba(242, 240, 234, 0.05) 75%);
+.code-censor-trigger:hover .organic-censor-code,
+.code-censor-trigger:focus-visible .organic-censor-code {
+  background-color: color-mix(in srgb, var(--panel-strong) 88%, #555b61 12%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-@keyframes mosaic-drift {
-  from {
-    background-position: 0 0, 11px 11px;
-  }
-  to {
-    background-position: 44px 22px, 55px 33px;
-  }
+.code-censor-trigger:hover .code-censor-text,
+.code-censor-trigger:focus-visible .code-censor-text {
+  opacity: 1;
+}
+
+.code-censor-trigger:hover .organic-censor-code::after,
+.code-censor-trigger:focus-visible .organic-censor-code::after {
+  clip-path: circle(0% at 50% 50%);
+  opacity: 0;
+}
+
+[data-theme="dark"] .organic-censor-code {
+  background-color: color-mix(in srgb, var(--panel-strong) 54%, #40464c 46%);
+}
+
+[data-theme="dark"] .organic-censor-code::after {
+  background:
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent),
+    color-mix(in srgb, var(--panel-strong) 54%, #40464c 46%);
+}
+
+[data-theme="dark"] .code-censor-trigger:hover .organic-censor-code,
+[data-theme="dark"] .code-censor-trigger:focus-visible .organic-censor-code {
+  background-color: color-mix(in srgb, var(--panel-strong) 72%, #40464c 28%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 14%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animated-mosaic::before {
-    animation: none;
+  .organic-censor-code,
+  .code-censor-text,
+  .organic-censor-code::after {
+    transition: none;
   }
 }
 

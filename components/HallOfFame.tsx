@@ -73,6 +73,15 @@ function codexAvatarClass(userId: string) {
   return userId === CODEX_ASSIGNEE_ID ? ' codex-agent-avatar' : '';
 }
 
+function codexAvatarSurfaceClass(userId: string) {
+  return userId === CODEX_ASSIGNEE_ID ? ' codex-agent-avatar-surface' : '';
+}
+
+function timelineAvatarClass(userId: string) {
+  const isAgent = userId === CODEX_ASSIGNEE_ID || userId === CLAUDE_ASSIGNEE_ID;
+  return `${isAgent ? 'h-[78%] w-[78%] object-contain' : 'h-full w-full object-cover'}${codexAvatarClass(userId)}`;
+}
+
 export default function HallOfFame({ boardSlug }: HallOfFameProps) {
   const { projects, isLoaded } = useProjects();
   const [board, setBoard] = useState<BoardHistory | null>(null);
@@ -329,9 +338,14 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                         <div className="absolute -right-8 top-9 h-10 w-12 rotate-[30deg] rounded-full border-r-4 border-t-2 border-stone-100/75" />
                         {leader.avatar ? (
                           <div
-                            className={`h-20 w-20 rounded-full bg-white bg-[length:68%_68%] bg-center bg-no-repeat shadow-[inset_0_0_18px_rgba(255,255,255,0.7)]${codexAvatarClass(leader.userId)}`}
-                            style={{ backgroundImage: `url(${leader.avatar})` }}
-                          />
+                            className={`flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-white shadow-[inset_0_0_18px_rgba(255,255,255,0.7)]${codexAvatarSurfaceClass(leader.userId)}`}
+                          >
+                            <img
+                              src={leader.avatar}
+                              alt={leader.name}
+                              className={`h-[68%] w-[68%] object-contain${codexAvatarClass(leader.userId)}`}
+                            />
+                          </div>
                         ) : (
                           <span className="flex h-20 w-20 items-center justify-center rounded-full bg-black/70 text-3xl font-black uppercase text-white shadow-[inset_0_0_18px_rgba(255,255,255,0.22)]">
                             {leader.name.charAt(0)}
@@ -512,10 +526,17 @@ export default function HallOfFame({ boardSlug }: HallOfFameProps) {
                                 <div
                                   key={assignee.userId}
                                   title={assignee.name}
-                                  className={`flex h-9 w-9 items-center justify-center rounded-full border-2 border-black bg-white bg-cover bg-center text-xs font-black uppercase text-black shadow-[0_0_0_1px_rgba(255,255,255,0.45)]${codexAvatarClass(assignee.userId)}`}
-                                  style={assignee.avatar ? { backgroundImage: `url(${assignee.avatar})` } : undefined}
+                                  className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-black bg-white text-xs font-black uppercase text-black shadow-[0_0_0_1px_rgba(255,255,255,0.45)]${codexAvatarSurfaceClass(assignee.userId)}`}
                                 >
-                                  {!assignee.avatar && assignee.name.charAt(0)}
+                                  {assignee.avatar ? (
+                                    <img
+                                      src={assignee.avatar}
+                                      alt={assignee.name}
+                                      className={timelineAvatarClass(assignee.userId)}
+                                    />
+                                  ) : (
+                                    assignee.name.charAt(0)
+                                  )}
                                 </div>
                               ))}
                               {timelineAssignees.length > 4 && (

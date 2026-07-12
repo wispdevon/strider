@@ -42,6 +42,7 @@ function getBoardsByMemberId(userId: string) {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    isPublic: row.is_public === 1,
     passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   }));
@@ -68,14 +69,14 @@ export async function GET() {
     }
     boards = Array.from(boardMap.values());
   } else {
-    // Not authenticated: show only genuinely public boards.
-    boards = getAllBoards().filter(b => !b.ownerId && !b.passkeyRequired && !b.passwordHash);
+    // Not authenticated: show only boards explicitly published for newcomers.
+    boards = getAllBoards().filter(b => b.isPublic && !b.passkeyRequired && !b.passwordHash);
   }
   
   // Don't expose sensitive data like authorPin or passwordHash
   const safeBoards = boards.map(({ authorPin, passwordHash, ...rest }) => ({
     ...rest,
-    joinCode: session?.userId ? rest.joinCode : undefined,
+    joinCode: session?.userId || rest.isPublic ? rest.joinCode : undefined,
     hasPassword: !!passwordHash,
   }));
   return NextResponse.json(safeBoards);
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
     if (!body) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const { name, emoji, websiteUrl, password, passkeyRequired } = body;
+    const { name, emoji, websiteUrl, password, isPublic, passkeyRequired } = body;
 
     if (typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Board name is required' }, { status: 400 });
@@ -107,6 +108,9 @@ export async function POST(request: Request) {
     if (password !== undefined && (typeof password !== 'string' || password.length > 200)) {
       return NextResponse.json({ error: 'Invalid password' }, { status: 400 });
     }
+    if (isPublic !== undefined && typeof isPublic !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid public setting' }, { status: 400 });
+    }
     if (passkeyRequired !== undefined && typeof passkeyRequired !== 'boolean') {
       return NextResponse.json({ error: 'Invalid passkey setting' }, { status: 400 });
     }
@@ -114,14 +118,14 @@ export async function POST(request: Request) {
     // Check if user is authenticated to set as owner
     const session = await getSession();
     
-    // Protected boards must be bound to a real account so access can be enforced.
-    if ((passkeyRequired || password) && !session?.userId) {
-      return NextResponse.json({ error: 'Authentication required for protected boards' }, { status: 401 });
+    // Non-public or otherwise protected boards must be tied to a real account.
+    if ((!isPublic || passkeyRequired || password) && !session?.userId) {
+      return NextResponse.json({ error: 'Authentication required for private or protected boards' }, { status: 401 });
     }
     
     const ownerId = session?.userId || undefined;
 
-    const board = createBoard({ name: name.trim(), emoji: typeof emoji === 'string' ? emoji.trim() : undefined, websiteUrl: normalizedWebsiteUrl, password, ownerId, passkeyRequired: !!passkeyRequired });
+    const board = createBoard({ name: name.trim(), emoji: typeof emoji === 'string' ? emoji.trim() : undefined, websiteUrl: normalizedWebsiteUrl, password, ownerId, isPublic: !!isPublic, passkeyRequired: !!passkeyRequired });
 
     // If user is authenticated and owns the board, also add them as a member
     if (session?.userId && board.ownerId === session.userId) {
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
       joinCode: board.joinCode,
       authorPin: board.authorPin,
       hasPassword: !!board.passwordHash,
+      isPublic: board.isPublic,
       passkeyRequired: board.passkeyRequired,
       ownerId: board.ownerId,
       createdAt: board.createdAt
@@ -173,8 +178,8 @@ export async function PUT(request: Request) {
   }
 
   const session = await getSession();
-  const protectedBoard = !!board.ownerId || board.passkeyRequired || !!board.passwordHash;
-  if (protectedBoard && !session?.userId) {
+  const requiresAuthenticatedJoin = !board.isPublic || board.passkeyRequired || !!board.passwordHash;
+  if (requiresAuthenticatedJoin && !session?.userId) {
     return NextResponse.json({ error: 'Authentication required to join this board', requiresPasskey: board.passkeyRequired, requiresPassword: !!board.passwordHash }, { status: 401 });
   }
 
@@ -208,6 +213,7 @@ export async function PUT(request: Request) {
     slug: board.slug,
     joinCode: board.joinCode,
     hasPassword: !!board.passwordHash,
+    isPublic: board.isPublic,
     passkeyRequired: board.passkeyRequired,
     createdAt: board.createdAt
   });

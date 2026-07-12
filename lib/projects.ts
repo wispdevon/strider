@@ -3,7 +3,22 @@
  */
 
 import { getDb } from './db-core';
-import type { Project, ProjectRow, Subtask } from './types';
+import type { DeletedProject, DeletedProjectRow, Project, ProjectRow, Subtask } from './types';
+
+type CreateProjectInput = {
+  id?: string;
+  slug?: string;
+  title: string;
+  note: string;
+  stage: Project['stage'];
+  subtasks: Array<string | Subtask>;
+  category: string;
+  boardId: string;
+  assigneeId?: string | null;
+  assigneeIds?: string[];
+  completedAt?: string | null;
+  sortOrder?: number;
+};
 
 function normalizeAssigneeIds(assigneeIds?: string[] | null, fallbackId?: string | null): string[] {
   const ids = Array.isArray(assigneeIds) ? assigneeIds : [];
@@ -46,6 +61,20 @@ function mapProjectRow(row: ProjectRow): Project {
   };
 }
 
+function mapDeletedProjectRow(row: DeletedProjectRow): DeletedProject {
+  const parsed = JSON.parse(row.project_json) as Project;
+  return {
+    id: row.id,
+    boardId: row.board_id,
+    deletedAt: row.deleted_at,
+    project: {
+      ...parsed,
+      subtasks: normalizeSubtasks(parsed.subtasks),
+      assigneeIds: normalizeAssigneeIds(parsed.assigneeIds, parsed.assigneeId),
+    },
+  };
+}
+
 // Project functions
 export function getProjectsByBoardId(boardId: string): Project[] {
   const db = getDb();
@@ -69,28 +98,51 @@ export function getProjectById(id: string): Project | null {
   return mapProjectRow(row);
 }
 
+export function getDeletedProjectsByBoardId(boardId: string): DeletedProject[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM deleted_projects WHERE board_id = ? ORDER BY deleted_at DESC').all(boardId) as DeletedProjectRow[];
+  return rows.map(mapDeletedProjectRow);
+}
+
+function archiveProjectDeletion(project: Project) {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO deleted_projects (id, board_id, project_json, deleted_at)
+    VALUES (@id, @boardId, @projectJson, CURRENT_TIMESTAMP)
+  `).run({
+    id: project.id,
+    boardId: project.boardId,
+    projectJson: JSON.stringify(project),
+  });
+}
+
 /**
  * Create a project. Internal use for seeding accepts optional pre-done subtasks.
  */
-export function createProject(
-  input: {
-    title: string;
-    note: string;
-    stage: Project['stage'];
-    subtasks: string[];
-    category: string;
-    boardId: string;
-  },
-  preDoneTitles: string[] = []
-): Project {
-  const slug = input.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  const id = `project-${Date.now()}`;
-  
-  const subtasks = input.subtasks.map((title, index) => ({
-    id: `sub-${Date.now()}-${index}`,
-    title,
-    done: preDoneTitles.includes(title)
-  }));
+export function createProject(input: CreateProjectInput, preDoneTitles: string[] = []): Project {
+  const slug = input.slug ?? input.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const id = input.id ?? `project-${Date.now()}`;
+  const assigneeIds = normalizeAssigneeIds(input.assigneeIds, input.assigneeId);
+
+  const subtasks = normalizeSubtasks(
+    input.subtasks.map((subtask, index) => {
+      if (typeof subtask === 'string') {
+        return {
+          id: `sub-${Date.now()}-${index}`,
+          title: subtask,
+          done: preDoneTitles.includes(subtask)
+        };
+      }
+
+      return {
+        id: subtask.id || `sub-${Date.now()}-${index}`,
+        title: subtask.title,
+        done: !!subtask.done,
+        assigneeId: subtask.assigneeId ?? null,
+        assigneeIds: subtask.assigneeIds
+      };
+    })
+  );
 
   const project: Project = {
     id,
@@ -101,14 +153,16 @@ export function createProject(
     category: input.category || 'General',
     subtasks: subtasks.length > 0 ? subtasks : [{ id: `sub-${Date.now()}`, title: 'First milestone', done: false }],
     boardId: input.boardId,
-    completedAt: input.stage === 'done' ? new Date().toISOString() : null,
-    sortOrder: Date.now()
+    assigneeId: assigneeIds[0] ?? null,
+    assigneeIds,
+    completedAt: input.completedAt !== undefined ? input.completedAt : input.stage === 'done' ? new Date().toISOString() : null,
+    sortOrder: input.sortOrder ?? Date.now()
   };
 
   const db = getDb();
   db.prepare(`
-    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id, completed_at, sort_order)
-    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId, @completedAt, @sortOrder)
+    INSERT INTO projects (id, slug, title, note, stage, category, subtasks, board_id, assignee_id, assignee_ids, completed_at, sort_order)
+    VALUES (@id, @slug, @title, @note, @stage, @category, @subtasks, @boardId, @assigneeId, @assigneeIds, @completedAt, @sortOrder)
   `).run({
     id: project.id,
     slug: project.slug,
@@ -118,6 +172,8 @@ export function createProject(
     category: project.category,
     subtasks: JSON.stringify(project.subtasks),
     boardId: project.boardId,
+    assigneeId: project.assigneeId ?? null,
+    assigneeIds: JSON.stringify(project.assigneeIds ?? []),
     completedAt: project.completedAt,
     sortOrder: project.sortOrder
   });
@@ -201,7 +257,33 @@ export function toggleSubtask(projectId: string, subtaskId: string): Project | n
 
 export function deleteProject(id: string) {
   const db = getDb();
+  const project = getProjectById(id);
+  if (project) {
+    archiveProjectDeletion(project);
+  }
   db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+}
+
+export function restoreDeletedProject(boardId: string, deletedProjectId: string): Project | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM deleted_projects WHERE id = ? AND board_id = ?').get(deletedProjectId, boardId) as DeletedProjectRow | undefined;
+  if (!row) return null;
+
+  const archived = mapDeletedProjectRow(row);
+  const restored = createProject({
+    ...archived.project,
+    boardId,
+    subtasks: archived.project.subtasks,
+  });
+
+  db.prepare('DELETE FROM deleted_projects WHERE id = ?').run(deletedProjectId);
+  return restored;
+}
+
+export function permanentlyDeleteArchivedProject(boardId: string, deletedProjectId: string) {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM deleted_projects WHERE id = ? AND board_id = ?').run(deletedProjectId, boardId);
+  return result.changes > 0;
 }
 
 export function deleteSubtask(projectId: string, subtaskId: string): Project | null {

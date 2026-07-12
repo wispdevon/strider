@@ -56,6 +56,7 @@ export function getAllBoards(): Board[] {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    isPublic: row.is_public === 1,
     passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   }));
@@ -75,6 +76,7 @@ export function getBoardsByOwnerId(ownerId: string): Board[] {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    isPublic: row.is_public === 1,
     passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   }));
@@ -96,6 +98,7 @@ export function getBoardBySlug(slug: string): BoardWithProjects | null {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    isPublic: row.is_public === 1,
     passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   };
@@ -139,6 +142,7 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
     passwordHash: row.password_hash,
     authorPin: row.author_pin,
     ownerId: row.owner_id,
+    isPublic: row.is_public === 1,
     passkeyRequired: row.passkey_required === 1,
     createdAt: row.created_at
   };
@@ -148,7 +152,7 @@ export function getBoardByJoinCode(joinCode: string): Board | null {
  * Create a board. Internal use for seeding accepts optional fixed id/joinCode/authorPin.
  */
 export function createBoard(
-  input: { name: string; emoji?: string; websiteUrl?: string | null; password?: string; ownerId?: string; passkeyRequired?: boolean },
+  input: { name: string; emoji?: string; websiteUrl?: string | null; password?: string; ownerId?: string; isPublic?: boolean; passkeyRequired?: boolean },
   id?: string,
   joinCode?: string,
   authorPin?: string
@@ -160,11 +164,12 @@ export function createBoard(
   const finalAuthorPin = authorPin || generatePin();
   const passwordHash = input.password ? hashPassword(input.password) : null;
   const slugWithSuffix = `${slug}-${Date.now().toString(36)}`;
+  const isPublic = input.isPublic ? 1 : 0;
   const passkeyRequired = input.passkeyRequired ? 1 : 0;
 
   db.prepare(`
-    INSERT INTO boards (id, name, emoji, website_url, slug, join_code, password_hash, author_pin, owner_id, passkey_required)
-    VALUES (@id, @name, @emoji, @websiteUrl, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @passkeyRequired)
+    INSERT INTO boards (id, name, emoji, website_url, slug, join_code, password_hash, author_pin, owner_id, is_public, passkey_required)
+    VALUES (@id, @name, @emoji, @websiteUrl, @slug, @joinCode, @passwordHash, @authorPin, @ownerId, @isPublic, @passkeyRequired)
   `).run({
     id: finalId,
     name: input.name,
@@ -175,6 +180,7 @@ export function createBoard(
     passwordHash,
     authorPin: finalAuthorPin,
     ownerId: input.ownerId || null,
+    isPublic,
     passkeyRequired
   });
 
@@ -188,6 +194,7 @@ export function createBoard(
     passwordHash,
     authorPin: finalAuthorPin,
     ownerId: input.ownerId || null,
+    isPublic: input.isPublic || false,
     passkeyRequired: input.passkeyRequired || false,
     createdAt: new Date().toISOString()
   };
@@ -198,6 +205,7 @@ export function updateBoard(id: string, updates: {
   emoji?: string;
   websiteUrl?: string | null;
   password?: string | null;
+  isPublic?: boolean;
   passkeyRequired?: boolean;
 }): Board | null {
   const current = getBoardBySlug(id) || getAllBoards().find(b => b.id === id);
@@ -212,13 +220,16 @@ export function updateBoard(id: string, updates: {
     : updates.password 
       ? hashPassword(updates.password) 
       : current.passwordHash;
+  const newIsPublic = updates.isPublic !== undefined
+    ? (updates.isPublic ? 1 : 0)
+    : (current.isPublic ? 1 : 0);
   const newPasskeyRequired = updates.passkeyRequired !== undefined 
     ? (updates.passkeyRequired ? 1 : 0) 
     : (current.passkeyRequired ? 1 : 0);
 
   db.prepare(`
     UPDATE boards
-    SET name = @name, emoji = @emoji, website_url = @websiteUrl, password_hash = @passwordHash, passkey_required = @passkeyRequired
+    SET name = @name, emoji = @emoji, website_url = @websiteUrl, password_hash = @passwordHash, is_public = @isPublic, passkey_required = @passkeyRequired
     WHERE id = @id
   `).run({
     id,
@@ -226,6 +237,7 @@ export function updateBoard(id: string, updates: {
     emoji: newEmoji,
     websiteUrl: newWebsiteUrl,
     passwordHash: newPasswordHash,
+    isPublic: newIsPublic,
     passkeyRequired: newPasskeyRequired
   });
 
@@ -235,6 +247,7 @@ export function updateBoard(id: string, updates: {
     emoji: newEmoji,
     websiteUrl: newWebsiteUrl,
     passwordHash: newPasswordHash,
+    isPublic: newIsPublic === 1,
     passkeyRequired: newPasskeyRequired === 1
   };
 }

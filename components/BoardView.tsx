@@ -6,7 +6,8 @@ import {
   DragOverlay,
   DragEndEvent,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -15,11 +16,12 @@ import {
 import Link from 'next/link';
 import ProjectCard from './ProjectCard';
 import { Project, useProjects, BoardMemberInfo } from '@/lib/useProjects';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import UserMenu from './UserMenu';
 import InviteFriendsModal from './InviteFriendsModal';
 import BoardIcon from './BoardIcon';
 import { getAssignableMemberPool } from '@/lib/virtual-assignees';
+import { useAuth } from '@/context/auth-context';
 
 type BoardStage = 'planning' | 'active' | 'review';
 type ProjectStage = Project['stage'];
@@ -48,6 +50,7 @@ interface BoardMember {
   userId: string;
   role: 'owner' | 'editor' | 'viewer';
   name: string;
+  friendCode?: string;
   avatar: string | null;
   joinedAt: string;
 }
@@ -60,6 +63,7 @@ interface BoardInfo {
   slug: string;
   joinCode: string;
   ownerId?: string | null;
+  isPublic: boolean;
   hasPassword: boolean;
   passkeyRequired?: boolean;
   isOwner?: boolean;
@@ -74,12 +78,44 @@ interface FriendOption {
   avatar?: string;
 }
 
+interface FriendRequestState {
+  id: string;
+  name: string;
+  friendCode: string;
+  avatar?: string;
+}
+
+function getMemberFriendState(
+  member: BoardMember,
+  friends: FriendOption[],
+  incomingRequests: FriendRequestState[],
+  outgoingRequests: FriendRequestState[],
+  currentUserId?: string
+) {
+  if (currentUserId && member.userId === currentUserId) return 'self';
+  if (friends.some((friend) => friend.friendCode === member.friendCode)) return 'friend';
+  if (incomingRequests.some((request) => request.friendCode === member.friendCode)) return 'incoming';
+  if (outgoingRequests.some((request) => request.friendCode === member.friendCode)) return 'outgoing';
+  return 'none';
+}
+
 interface ProjectFormData {
   title: string;
   note: string;
   stage: BoardStage;
   subtasks: string;
   category: string;
+}
+
+interface UndoProjectDeletion {
+  project: Project;
+}
+
+interface DeletedProjectEntry {
+  id: string;
+  boardId: string;
+  deletedAt: string;
+  project: Project;
 }
 
 function getNextStage(stage: ProjectStage): ProjectStage {
@@ -132,6 +168,7 @@ function DraggableProjectCard({
   onDelete,
   members,
   onAssignProject,
+  onUpdateProject,
   boardId,
   isCompleting,
 }: {
@@ -141,6 +178,7 @@ function DraggableProjectCard({
   onDelete: () => void;
   members?: BoardMemberInfo[];
   onAssignProject?: (userIds: string[]) => void;
+  onUpdateProject?: (updates: Partial<Project>) => void;
   boardId: string;
   isCompleting: boolean;
 }) {
@@ -174,7 +212,7 @@ function DraggableProjectCard({
       style={style}
       {...attributes}
       {...listeners}
-      className={`w-[min(18rem,80vw)] shrink-0 cursor-grab touch-none select-none active:cursor-grabbing md:w-auto ${
+      className={`w-[min(18rem,80vw)] shrink-0 cursor-grab touch-pan-x select-none active:cursor-grabbing md:w-full md:touch-none ${
         isOver && !isDragging ? 'rounded-2xl ring-2 ring-[var(--accent)]/25' : ''
       }`}
     >
@@ -185,6 +223,7 @@ function DraggableProjectCard({
         onDelete={onDelete}
         members={members}
         onAssignProject={onAssignProject}
+        onUpdateProject={onUpdateProject}
         boardId={boardId}
         isDragging={isDragging}
         isCompleting={isCompleting}
@@ -197,6 +236,7 @@ function DraggableProjectCard({
 }
 
 export default function BoardView({ boardSlug }: BoardViewProps) {
+  const { authenticated, user } = useAuth();
   const { isLoaded, addProject, updateProject, deleteProject, getProjectProgress } = useProjects();
   const [board, setBoard] = useState<BoardInfo | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
@@ -212,18 +252,96 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('📋');
   const [editWebsiteUrl, setEditWebsiteUrl] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editIsPublic, setEditIsPublic] = useState(false);
+  const [showBoardPassword, setShowBoardPassword] = useState(false);
   const [transferOwnerId, setTransferOwnerId] = useState('');
   const [transferConfirm, setTransferConfirm] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [friends, setFriends] = useState<FriendOption[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendRequestState[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<FriendRequestState[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showRecycleBinModal, setShowRecycleBinModal] = useState(false);
+  const [memberActionState, setMemberActionState] = useState<Record<string, 'idle' | 'loading'>>({});
   const [activeDragProjectId, setActiveDragProjectId] = useState<string | null>(null);
   const [completingProjectIds, setCompletingProjectIds] = useState<Set<string>>(new Set());
   const [showCategoryOptions, setShowCategoryOptions] = useState(false);
+  const [undoProjectDeletion, setUndoProjectDeletion] = useState<UndoProjectDeletion | null>(null);
+  const [deletedProjects, setDeletedProjects] = useState<DeletedProjectEntry[]>([]);
+  const [recycleBinLoading, setRecycleBinLoading] = useState(false);
+  const undoProjectTimerRef = useRef<number | null>(null);
+
+  const clearUndoProjectTimer = () => {
+    if (undoProjectTimerRef.current) {
+      window.clearTimeout(undoProjectTimerRef.current);
+      undoProjectTimerRef.current = null;
+    }
+  };
+
+  const queueUndoProjectDeletion = (project: Project) => {
+    clearUndoProjectTimer();
+    setUndoProjectDeletion({ project });
+    undoProjectTimerRef.current = window.setTimeout(() => {
+      setUndoProjectDeletion(null);
+      undoProjectTimerRef.current = null;
+    }, 6000);
+  };
+
+  const loadRecycleBin = async () => {
+    if (!board) return false;
+    setRecycleBinLoading(true);
+    try {
+      const response = await fetch(`/api/boards/${board.id}/recycle-bin`);
+      if (!response.ok) return false;
+      const data = await response.json() as DeletedProjectEntry[];
+      setDeletedProjects(data);
+      return true;
+    } finally {
+      setRecycleBinLoading(false);
+    }
+  };
+
+  const restoreDeletedProject = async (deletedProjectId: string) => {
+    if (!board) return false;
+
+    const response = await fetch(`/api/boards/${board.id}/recycle-bin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deletedProjectId }),
+    });
+
+    if (!response.ok) return false;
+
+    await loadBoard();
+    await loadRecycleBin();
+    return true;
+  };
+
+  const permanentlyDeleteRecycleBinEntry = async (deletedProjectId: string) => {
+    if (!board) return false;
+
+    const response = await fetch(`/api/boards/${board.id}/recycle-bin/${deletedProjectId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) return false;
+
+    await loadRecycleBin();
+    return true;
+  };
+
+  useEffect(() => () => clearUndoProjectTimer(), []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 180,
+        tolerance: 10,
+      },
     })
   );
 
@@ -242,11 +360,27 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   }, [boardSlug]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
+    const refresh = () => {
       void loadBoard();
-    }, 0);
+    };
 
-    return () => window.clearTimeout(timeoutId);
+    const intervalMs = 3000;
+
+    refresh();
+    const poller = window.setInterval(refresh, intervalMs);
+    const onVisibility = () => {
+      if (!document.hidden) {
+        refresh();
+      }
+    };
+    window.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onVisibility);
+
+    return () => {
+      window.clearInterval(poller);
+      window.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onVisibility);
+    };
   }, [loadBoard]);
 
   if (!isLoaded || boardLoading) {
@@ -384,7 +518,16 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     void updateProject(projectId, { assigneeId: userIds[0] ?? null, assigneeIds: userIds });
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleInlineProjectUpdate = (projectId: string, updates: Partial<Project>) => {
+    patchLocalProject(projectId, updates);
+    void updateProject(projectId, updates);
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    const previousBoard = board;
+    const deletedProject = board?.projects.find((item) => item.id === projectId);
+    if (!deletedProject) return;
+
     setBoard((current) => {
       if (!current) return current;
       return {
@@ -392,52 +535,65 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         projects: current.projects.filter((project) => project.id !== projectId),
       };
     });
-    void deleteProject(projectId);
+
+    const deleted = await deleteProject(projectId);
+    if (!deleted) {
+      setBoard(previousBoard);
+      window.alert('Failed to delete task');
+      return;
+    }
+
+    queueUndoProjectDeletion(deletedProject);
+  };
+
+  const handleUndoDeleteProject = () => {
+    if (!undoProjectDeletion) return;
+    const deletedProjectId = undoProjectDeletion.project.id;
+    clearUndoProjectTimer();
+    setUndoProjectDeletion(null);
+    void (async () => {
+      const restored = await restoreDeletedProject(deletedProjectId);
+      if (!restored) {
+        window.alert('Failed to restore task');
+      }
+    })();
+  };
+
+  const openRecycleBin = () => {
+    setShowRecycleBinModal(true);
+    void loadRecycleBin();
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!board?.isOwner) return;
+
+    const confirmed = window.confirm(`Delete "${board.name}" and all of its tasks? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setSettingsError('');
+    try {
+      const response = await fetch(`/api/boards/${board.id}`, { method: 'DELETE' });
+      if (response.ok) {
+        window.location.href = '/';
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      setSettingsError(data.error || 'Failed to delete board');
+    } catch (err) {
+      console.error('Failed to delete board:', err);
+      setSettingsError('Failed to delete board');
+    }
   };
 
   const handleExportBoard = () => {
     if (!board?.isOwner) return;
-
-    const exportData = {
-      exportedAt: new Date().toISOString(),
-      app: 'Strider',
-      version: 1,
-      board: {
-        id: board.id,
-        name: board.name,
-        emoji: board.emoji,
-        websiteUrl: board.websiteUrl,
-        slug: board.slug,
-        joinCode: board.joinCode,
-        ownerId: board.ownerId,
-        passkeyRequired: !!board.passkeyRequired,
-      },
-      members: board.members ?? [],
-      projects: sortProjects(projects).map((project) => ({
-        id: project.id,
-        slug: project.slug,
-        title: project.title,
-        note: project.note,
-        stage: project.stage,
-        category: project.category,
-        boardId: project.boardId,
-        assigneeId: project.assigneeId ?? null,
-        assigneeIds: project.assigneeIds ?? (project.assigneeId ? [project.assigneeId] : []),
-        completedAt: project.completedAt ?? null,
-        sortOrder: project.sortOrder ?? 0,
-        subtasks: project.subtasks,
-      })),
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = url;
+    link.href = `/api/boards/${board.id}/export`;
     link.download = exportFileName(board.name);
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -491,6 +647,20 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     loadBoard();
   };
 
+  const handleOpenAddProject = async (stage: BoardStage) => {
+    const created = await addProject(
+      'Untitled task',
+      '',
+      stage,
+      [],
+      'General',
+      board.id
+    );
+
+    if (!created) return;
+    await loadBoard();
+  };
+
   const summary = {
     total: activeProjects.length,
     inMotion: activeProjects.filter((p) => p.stage === 'active' || p.stage === 'review').length,
@@ -503,6 +673,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
       if (response.ok) {
         const data = await response.json();
         setFriends(data.friends || []);
+        setIncomingRequests(data.incomingRequests || []);
+        setOutgoingRequests(data.outgoingRequests || []);
       }
     } catch (err) {
       console.error('Failed to load friends:', err);
@@ -514,11 +686,70 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
     setEditName(board.name);
     setEditEmoji(board.emoji || '📋');
     setEditWebsiteUrl(board.websiteUrl || '');
+    setEditPassword('');
+    setEditIsPublic(!!board.isPublic);
+    setShowBoardPassword(false);
     setTransferOwnerId('');
     setTransferConfirm('');
     setSettingsError('');
     setShowRenameModal(true);
     void loadFriends();
+  };
+
+  const openMembersModal = () => {
+    setShowMembersModal(true);
+    if (authenticated) {
+      void loadFriends();
+    }
+  };
+
+  const handleSendFriendRequest = async (member: BoardMember) => {
+    if (!member.friendCode) return;
+
+    setMemberActionState((current) => ({ ...current, [member.userId]: 'loading' }));
+    try {
+      const response = await fetch('/api/friends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendCode: member.friendCode }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(data.error || 'Failed to send friend request');
+        return;
+      }
+      await loadFriends();
+    } catch (error) {
+      console.error('Failed to send friend request:', error);
+      window.alert('Failed to send friend request');
+    } finally {
+      setMemberActionState((current) => ({ ...current, [member.userId]: 'idle' }));
+    }
+  };
+
+  const handleRespondToFriendRequest = async (member: BoardMember, accept: boolean) => {
+    const request = incomingRequests.find((entry) => entry.friendCode === member.friendCode);
+    if (!request) return;
+
+    setMemberActionState((current) => ({ ...current, [member.userId]: 'loading' }));
+    try {
+      const response = await fetch(`/api/friends/${request.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accept }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(data.error || 'Failed to update friend request');
+        return;
+      }
+      await loadFriends();
+    } catch (error) {
+      console.error('Failed to update friend request:', error);
+      window.alert('Failed to update friend request');
+    } finally {
+      setMemberActionState((current) => ({ ...current, [member.userId]: 'idle' }));
+    }
   };
 
   const assignableMembers = board
@@ -567,7 +798,13 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
           <div className="flex items-center gap-3">
             {/* Member Avatars */}
             {board.members && board.members.length > 0 && (
-              <div className="flex -space-x-2">
+              <button
+                type="button"
+                onClick={openMembersModal}
+                className="flex -space-x-2 rounded-full transition-transform hover:scale-[1.02]"
+                aria-label="Board members"
+                title="Board members"
+              >
                 {board.members.slice(0, 5).map((member) => (
                   <div
                     key={member.id}
@@ -595,7 +832,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     +{board.members.length - 5}
                   </div>
                 )}
-              </div>
+              </button>
             )}
             
             <motion.button
@@ -618,6 +855,16 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                 <span aria-hidden="true">🏆</span>
               </Link>
             )}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={openRecycleBin}
+              aria-label="Recycle bin"
+              title="Recycle bin"
+              className="app-toolbar-button app-toolbar-button-neutral transition-all duration-300"
+            >
+              <span aria-hidden="true">🗑️</span>
+            </motion.button>
 
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -753,6 +1000,231 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
         ))}
       </motion.div>
 
+      {undoProjectDeletion && (
+        <motion.div
+          initial={{ y: -10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="max-w-full mx-auto px-6 -mt-2 mb-4"
+        >
+          <div className="rounded-lg border border-[var(--accent)]/35 bg-[var(--accent-soft)] text-[var(--foreground)] px-4 py-2 text-sm flex items-center justify-between gap-3">
+            <span>Task deleted.</span>
+            <button
+              type="button"
+              onClick={handleUndoDeleteProject}
+              className="app-toolbar-button app-toolbar-button-primary px-3 py-1 text-xs h-auto"
+            >
+              Undo
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      <AnimatePresence>
+        {showRecycleBinModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowRecycleBinModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 18 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-3xl rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--foreground)]">Recycle Bin</h2>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Deleted tasks stay here until you restore them or remove them permanently.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRecycleBinModal(false)}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--panel)]"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                {recycleBinLoading ? (
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-4 text-sm text-[var(--muted)]">
+                    Loading deleted tasks...
+                  </div>
+                ) : deletedProjects.length === 0 ? (
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-4 text-sm text-[var(--muted)]">
+                    The recycle bin is empty.
+                  </div>
+                ) : (
+                  deletedProjects.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent)]">
+                            {entry.project.category}
+                          </p>
+                          <p className="mt-1 truncate text-base font-semibold text-[var(--foreground)]">
+                            {entry.project.title}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            Deleted {new Date(entry.deletedAt).toLocaleString()}
+                          </p>
+                          <p className="mt-2 text-sm text-[var(--muted)]">
+                            {entry.project.subtasks.length} subtasks
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { void restoreDeletedProject(entry.id); }}
+                            className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[var(--accent)]/90"
+                          >
+                            Restore
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { void permanentlyDeleteRecycleBinEntry(entry.id); }}
+                            className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/15"
+                          >
+                            Delete forever
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {showMembersModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setShowMembersModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 18 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 18 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-2xl rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--foreground)]">Board Members</h2>
+                  <p className="mt-1 text-sm text-[var(--muted)]">
+                    Send friend requests to people already working in this board.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMembersModal(false)}
+                  className="rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--panel)]"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                {(board.members ?? []).map((member) => {
+                  const state = getMemberFriendState(member, friends, incomingRequests, outgoingRequests, user?.id);
+                  const isLoading = memberActionState[member.userId] === 'loading';
+
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-3"
+                    >
+                      {member.avatar ? (
+                        <img
+                          src={member.avatar}
+                          alt={member.name}
+                          className="h-11 w-11 rounded-full"
+                        />
+                      ) : (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--accent)]/15 text-sm font-bold text-[var(--accent)]">
+                          {member.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-semibold text-[var(--foreground)]">{member.name}</p>
+                          {member.role === 'owner' && (
+                            <span className="rounded-full bg-[var(--panel)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+                              Owner
+                            </span>
+                          )}
+                        </div>
+                        {member.friendCode && (
+                          <p className="mt-1 font-mono text-xs text-[var(--muted)]">{member.friendCode}</p>
+                        )}
+                      </div>
+
+                      {!authenticated ? (
+                        <span className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-xs font-medium text-[var(--muted)]">
+                          Sign in
+                        </span>
+                      ) : state === 'self' ? (
+                        <span className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-xs font-medium text-[var(--muted)]">
+                          You
+                        </span>
+                      ) : state === 'friend' ? (
+                        <span className="rounded-lg bg-[var(--accent)]/12 px-3 py-2 text-xs font-semibold text-[var(--accent)]">
+                          Friends
+                        </span>
+                      ) : state === 'outgoing' ? (
+                        <span className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-xs font-medium text-[var(--muted)]">
+                          Pending
+                        </span>
+                      ) : state === 'incoming' ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { void handleRespondToFriendRequest(member, false); }}
+                            disabled={isLoading}
+                            className="rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-xs font-medium text-[var(--muted)] transition-colors hover:bg-[var(--panel-strong)] disabled:opacity-60"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { void handleRespondToFriendRequest(member, true); }}
+                            disabled={isLoading}
+                            className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[var(--accent)]/90 disabled:opacity-60"
+                          >
+                            {isLoading ? '...' : 'Accept'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { void handleSendFriendRequest(member); }}
+                          disabled={isLoading || !member.friendCode}
+                          className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[var(--accent)]/90 disabled:opacity-60"
+                        >
+                          {isLoading ? '...' : 'Add friend'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Board Settings Modal */}
       <AnimatePresence>
         {showRenameModal && (
@@ -787,6 +1259,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                         name: editName.trim(),
                         emoji: editEmoji.trim(),
                         websiteUrl: editWebsiteUrl.trim() || null,
+                        password: editPassword ? editPassword : undefined,
+                        isPublic: editIsPublic,
                         transferOwnerId: transferOwnerId || undefined,
                       }),
                     });
@@ -797,6 +1271,8 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                         name: updated.name,
                         emoji: updated.emoji,
                         websiteUrl: updated.websiteUrl,
+                        isPublic: updated.isPublic,
+                        hasPassword: updated.hasPassword,
                         ownerId: updated.ownerId,
                         isOwner: updated.isOwner,
                         members: board.members?.map((member) => {
@@ -824,7 +1300,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                       type="text"
                       value={editEmoji}
                       onChange={(e) => setEditEmoji(e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] text-2xl text-center focus:outline-none focus:border-[var(--accent)]/40"
+                      className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 text-center text-2xl leading-none text-[var(--foreground)] focus:border-[var(--accent)]/40 focus:outline-none"
                       maxLength={16}
                       autoFocus
                     />
@@ -835,7 +1311,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                       type="text"
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg bg-[var(--panel-strong)] border border-[var(--border)] text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)]/40"
+                      className="mt-1 h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 text-[var(--foreground)] focus:border-[var(--accent)]/40 focus:outline-none"
                     />
                   </label>
                 </div>
@@ -853,6 +1329,40 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     When set, the board icon uses this site&apos;s favicon.
                   </span>
                 </label>
+
+                <div className="mb-4">
+                  <label className="mb-3 flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editIsPublic}
+                      onChange={(e) => setEditIsPublic(e.target.checked)}
+                      className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <span className="text-sm text-[var(--foreground)]">
+                      🌐 Public board (listed for newcomers and open without sign-in)
+                    </span>
+                  </label>
+                  <span className="text-xs font-semibold uppercase text-[var(--muted)]">Board Password</span>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      type={showBoardPassword ? 'text' : 'password'}
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder={board.hasPassword ? 'Password set - enter a new password to change it' : 'Optional board password'}
+                      className="h-11 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 text-[var(--foreground)] placeholder-[var(--muted)] focus:border-[var(--accent)]/40 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowBoardPassword((visible) => !visible)}
+                      className="h-11 shrink-0 rounded-lg border border-[var(--border)] bg-[var(--panel-strong)] px-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--panel)]"
+                    >
+                      {showBoardPassword ? 'Hide' : 'Reveal'}
+                    </button>
+                  </div>
+                  <span className="mt-1 block text-xs text-[var(--muted)]">
+                    Current passwords are stored securely and cannot be shown. Leave blank to keep the existing password.
+                  </span>
+                </div>
 
                 <div className="mb-4 rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -900,6 +1410,22 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                 {settingsError && (
                   <p className="text-sm text-red-600 mb-3">{settingsError}</p>
                 )}
+
+                <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--foreground)]">Delete board</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">Deletes this board and its tasks permanently.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDeleteBoard}
+                      className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex gap-3">
                   <button
@@ -977,9 +1503,10 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                                   project={project}
                                   progress={getProjectProgress(project)}
                                   onMove={(direction) => handleMoveProject(project.id, direction)}
-                                  onDelete={() => handleDeleteProject(project.id)}
+                                  onDelete={() => { void handleDeleteProject(project.id); }}
                                   members={assignableMembers as BoardMemberInfo[]}
                                   onAssignProject={(userIds) => handleAssignProject(project.id, userIds)}
+                                  onUpdateProject={(updates) => handleInlineProjectUpdate(project.id, updates)}
                                   boardId={board.id}
                                   isCompleting={completingProjectIds.has(project.id)}
                                 />
@@ -997,6 +1524,14 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                         </div>
                       )}
                     </StageDropZone>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddProject(stage.key)}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-sm font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent-sheen)] hover:bg-[var(--panel-strong)] hover:text-[var(--foreground)]"
+                    >
+                      <span aria-hidden="true">+</span>
+                      <span>Add task</span>
+                    </button>
                   </div>
                 </motion.div>
               );
@@ -1012,7 +1547,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
               if (!activeProject) return null;
 
               return (
-                <div className="w-[min(28rem,calc(100vw-3rem))] cursor-grabbing drop-shadow-[0_18px_42px_rgba(17,17,17,0.18)]">
+                <div className="w-[min(18rem,80vw)] cursor-grabbing drop-shadow-[0_18px_42px_rgba(17,17,17,0.18)] md:w-full">
                   <ProjectCard
                     project={activeProject}
                     progress={getProjectProgress(activeProject)}
@@ -1020,6 +1555,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     onDelete={() => {}}
                     members={assignableMembers as BoardMemberInfo[]}
                     onAssignProject={undefined}
+                    onUpdateProject={undefined}
                     boardId={board.id}
                     disableLayoutAnimation
                     nextActionLabel={activeProject.stage === 'review' ? 'Complete project' : `Move to ${STAGE_LABELS[getNextStage(activeProject.stage)]}`}

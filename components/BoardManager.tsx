@@ -15,6 +15,7 @@ interface Board {
   websiteUrl: string | null;
   slug: string;
   joinCode: string;
+  isPublic: boolean;
   hasPassword: boolean;
   passkeyRequired?: boolean;
   isOwner?: boolean;
@@ -73,6 +74,7 @@ export default function BoardManager() {
   const [createForm, setCreateForm] = useState({
     name: '',
     password: '',
+    isPublic: false,
     passkeyRequired: false
   });
   
@@ -134,6 +136,7 @@ export default function BoardManager() {
         body: JSON.stringify({
           name: createForm.name,
           password: createForm.password || undefined,
+          isPublic: createForm.isPublic,
           passkeyRequired: createForm.passkeyRequired
         })
       });
@@ -141,7 +144,7 @@ export default function BoardManager() {
       if (response.ok) {
         const board = await response.json();
         setCreatedBoard(board);
-        setCreateForm({ name: '', password: '', passkeyRequired: false });
+        setCreateForm({ name: '', password: '', isPublic: false, passkeyRequired: false });
         setShowCreateForm(false);
         loadBoards();
       } else {
@@ -298,6 +301,12 @@ export default function BoardManager() {
                   </div>
                 )}
 
+                {createdBoard.isPublic && (
+                  <div className="p-3 rounded-lg bg-sky-50 border border-sky-200">
+                    <p className="text-sm text-sky-700">🌐 Public board — listed for newcomers and open without sign-in</p>
+                  </div>
+                )}
+
                 {createdBoard.hasPassword && (
                   <div className="p-3 rounded-lg bg-green-50 border border-green-200">
                     <p className="text-sm text-green-700">🔒 Password protected</p>
@@ -360,20 +369,39 @@ export default function BoardManager() {
                 </motion.button>
               </div>
               
-              {/* Passkey Required Checkbox - only show when authenticated */}
-              {authenticated && (
-                <label className="flex items-center gap-2 mt-3 cursor-pointer">
+              <div className="mt-3 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={createForm.passkeyRequired}
-                    onChange={(e) => setCreateForm({ ...createForm, passkeyRequired: e.target.checked })}
+                    checked={createForm.isPublic}
+                    onChange={(e) => setCreateForm({ ...createForm, isPublic: e.target.checked })}
                     className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
                   />
                   <span className="text-sm text-[var(--foreground)]">
-                    🔑 Passkey-protected (requires authentication to view)
+                    🌐 Public board (listed for newcomers and open without sign-in)
                   </span>
                 </label>
-              )}
+
+                {authenticated && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createForm.passkeyRequired}
+                      onChange={(e) => setCreateForm({ ...createForm, passkeyRequired: e.target.checked })}
+                      className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <span className="text-sm text-[var(--foreground)]">
+                      🔑 Passkey-protected (requires authentication to view)
+                    </span>
+                  </label>
+                )}
+
+                {!authenticated && !createForm.isPublic && (
+                  <p className="text-xs text-[var(--muted)]">
+                    Sign in to create a private board.
+                  </p>
+                )}
+              </div>
             </form>
           </motion.div>
         )}
@@ -470,6 +498,11 @@ export default function BoardManager() {
                                 🔑 Passkey
                               </span>
                             )}
+                            {board.isPublic && (
+                              <span className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700">
+                                🌐 Public
+                              </span>
+                            )}
                             {board.hasPassword && (
                               <span className="text-xs px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)]">
                                 🔒 Protected
@@ -486,13 +519,13 @@ export default function BoardManager() {
                         <button
                           type="button"
                           onClick={() => handleCopyJoinCode(board.id, board.joinCode)}
-                          className="group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
+                          className="code-censor-trigger group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
                           aria-label={`Copy join code ${board.joinCode}`}
                           title="Copy code"
                         >
                           Code:{' '}
-                          <span className="ml-1 select-none rounded-md bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_50%,rgba(255,255,255,0.04)_50%),linear-gradient(0deg,rgba(29,31,35,0.16)_50%,rgba(255,255,255,0.05)_50%)] bg-[length:7px_7px] px-1.5 text-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.035)] transition duration-150 group-hover/code:select-text group-hover/code:bg-none group-hover/code:px-0 group-hover/code:text-[var(--accent)] group-hover/code:shadow-none group-focus/code:select-text group-focus/code:bg-none group-focus/code:px-0 group-focus/code:text-[var(--accent)] group-focus/code:shadow-none">
-                            {board.joinCode}
+                          <span className="organic-censor-code ml-1 inline-flex min-w-[7ch] select-none items-center justify-center rounded-md px-1.5 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.035)]">
+                            <span className="code-censor-text">{board.joinCode}</span>
                           </span>
                           {copiedBoardId === board.id && (
                             <span className="ml-2 text-[var(--accent)]">Copied</span>

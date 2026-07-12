@@ -180,6 +180,7 @@ function initializeDb() {
       password_hash TEXT,
       author_pin TEXT NOT NULL,
       owner_id TEXT,
+      is_public INTEGER NOT NULL DEFAULT 0,
       passkey_required INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL
@@ -225,6 +226,26 @@ function initializeDb() {
       FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS deleted_projects (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL,
+      project_json TEXT NOT NULL,
+      deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Add is_public column if it doesn't exist (migration)
+  try {
+    const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;
+    if (!columns.some(col => col.name === 'is_public')) {
+      db.exec(`ALTER TABLE boards ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0`);
+    }
+  } catch {
+    // Column might already exist, ignore
+  }
 
   // Add passkey_required column if it doesn't exist (migration)
   try {

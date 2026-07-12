@@ -41,6 +41,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return {
       ...member,
       name: user?.name || 'Unknown',
+      friendCode: user?.friendCode || '',
       avatar: user ? generateAvatarFromSeed(getAvatarSeed(user.id)) : null
     };
   });
@@ -52,7 +53,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { authorPin, passwordHash, ...safeBoard } = board;
   return NextResponse.json({
     ...safeBoard,
-    joinCode: access.isMember ? safeBoard.joinCode : undefined,
+    joinCode: access.isMember || safeBoard.isPublic ? safeBoard.joinCode : undefined,
     hasPassword: !!passwordHash,
     isOwner: !!isOwner,
     members: membersWithAvatars
@@ -66,7 +67,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (!body) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
-  const { name, emoji, websiteUrl, password, passkeyRequired, transferOwnerId } = body;
+  const { name, emoji, websiteUrl, password, isPublic, passkeyRequired, transferOwnerId } = body;
 
   // Get the board
   const board = getBoardBySlug(id) || getAllBoards().find(b => b.id === id);
@@ -99,6 +100,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (password !== undefined && password !== null && (typeof password !== 'string' || password.length > 200)) {
     return NextResponse.json({ error: 'Invalid password' }, { status: 400 });
   }
+  if (isPublic !== undefined && typeof isPublic !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid public setting' }, { status: 400 });
+  }
   if (passkeyRequired !== undefined && typeof passkeyRequired !== 'boolean') {
     return NextResponse.json({ error: 'Invalid passkey setting' }, { status: 400 });
   }
@@ -128,6 +132,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     emoji: typeof emoji === 'string' ? emoji.trim() : undefined,
     websiteUrl: normalizedWebsiteUrl,
     password: password !== undefined ? password : undefined,
+    isPublic: isPublic !== undefined ? isPublic : undefined,
     passkeyRequired: passkeyRequired !== undefined ? passkeyRequired : undefined,
   });
 
@@ -143,6 +148,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     slug: updated.slug,
     joinCode: updated.joinCode,
     hasPassword: !!updated.passwordHash,
+    isPublic: updated.isPublic,
     passkeyRequired: updated.passkeyRequired,
     ownerId: transferred ? transferOwnerId : updated.ownerId,
     isOwner: !transferred,

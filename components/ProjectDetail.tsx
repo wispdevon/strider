@@ -215,7 +215,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(
     boardId,
     {
-      syncIntervalMs: 3000,
+      syncIntervalMs: 1200,
       pauseWhenHidden: true
     }
   );
@@ -228,6 +228,8 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [undoSubtaskDeletion, setUndoSubtaskDeletion] = useState<UndoSubtaskState | null>(null);
+  const [editingField, setEditingField] = useState<'title' | 'category' | null>(null);
+  const [headerDraft, setHeaderDraft] = useState('');
   const undoSubtaskTimerRef = useRef<number | null>(null);
 
   const clearUndoSubtaskTimer = () => {
@@ -352,6 +354,25 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
     });
   };
 
+  const startHeaderEdit = (field: 'title' | 'category') => {
+    setEditingField(field);
+    setHeaderDraft(field === 'title' ? project.title : project.category);
+  };
+
+  const commitHeaderEdit = () => {
+    if (!editingField) return;
+
+    const trimmed = headerDraft.trim();
+    const currentValue = editingField === 'title' ? project.title : project.category;
+    const nextValue = trimmed || currentValue;
+
+    if (nextValue !== currentValue) {
+      void updateProject(project.id, { [editingField]: nextValue });
+    }
+
+    setEditingField(null);
+  };
+
   const handleUndoSubtaskDelete = () => {
     if (!project || !undoSubtaskDeletion || undoSubtaskDeletion.projectId !== project.id) return;
 
@@ -459,8 +480,48 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
           {/* Title Section */}
           <div className="flex justify-between items-start mb-8">
             <div className="flex-1 pr-20">
-              <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">{project.category}</p>
-              <h1 className="hero-title text-[var(--foreground)] text-4xl md:text-5xl mt-2">{project.title}</h1>
+              {editingField === 'category' ? (
+                <input
+                  value={headerDraft}
+                  onChange={(event) => setHeaderDraft(event.target.value)}
+                  onBlur={commitHeaderEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') commitHeaderEdit();
+                    if (event.key === 'Escape') setEditingField(null);
+                  }}
+                  className="eyebrow m-0 block w-full border-0 bg-transparent p-0 text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold focus:outline-none"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startHeaderEdit('category')}
+                  className="eyebrow m-0 block w-full border-0 bg-transparent p-0 text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold text-left"
+                >
+                  {project.category}
+                </button>
+              )}
+              {editingField === 'title' ? (
+                <input
+                  value={headerDraft}
+                  onChange={(event) => setHeaderDraft(event.target.value)}
+                  onBlur={commitHeaderEdit}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') commitHeaderEdit();
+                    if (event.key === 'Escape') setEditingField(null);
+                  }}
+                  className="hero-title mt-2 m-0 block w-full border-0 bg-transparent p-0 text-[var(--foreground)] text-4xl md:text-5xl focus:outline-none"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startHeaderEdit('title')}
+                  className="hero-title mt-2 m-0 block w-full border-0 bg-transparent p-0 text-[var(--foreground)] text-4xl md:text-5xl text-left"
+                >
+                  {project.title}
+                </button>
+              )}
               <p className="text-[var(--muted)] mt-3 text-lg">{project.note}</p>
             </div>
             <div className="absolute right-6 top-6 flex flex-col items-end gap-2">

@@ -364,7 +364,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
       void loadBoard();
     };
 
-    const intervalMs = 3000;
+    const intervalMs = 1200;
 
     refresh();
     const poller = window.setInterval(refresh, intervalMs);

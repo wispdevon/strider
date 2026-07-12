@@ -28,6 +28,7 @@ interface CreatedBoard extends Board {
 
 const JOINED_BOARDS_STORAGE_KEY = 'strider-joined-boards';
 const STORAGE_PERSIST_PROMPT_KEY = 'strider-storage-persist-prompted';
+const BOARD_FAVORITES_STORAGE_KEY = 'strider-board-favorites';
 
 function rememberJoinedBoard(board: Board) {
   if (typeof window === 'undefined') return;
@@ -62,8 +63,11 @@ async function requestPersistentBoardStorage() {
 }
 
 export default function BoardManager() {
-  const { authenticated } = useAuth();
+  const { authenticated, user } = useAuth();
   const [boards, setBoards] = useState<Board[]>([]);
+  const [favoriteBoardIds, setFavoriteBoardIds] = useState<string[]>([]);
+  const [favoritesLoadedKey, setFavoritesLoadedKey] = useState<string | null>(null);
+  const [animatingFavoriteBoardId, setAnimatingFavoriteBoardId] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showJoinForm, setShowJoinForm] = useState(false);
@@ -82,6 +86,28 @@ export default function BoardManager() {
     joinCode: '',
     password: ''
   });
+
+  const favoritesStorageKey = `${BOARD_FAVORITES_STORAGE_KEY}:${user?.id || 'guest'}`;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const timeoutId = window.setTimeout(() => {
+      const storedFavorites = JSON.parse(
+        window.localStorage.getItem(favoritesStorageKey) || '[]'
+      ) as string[];
+      setFavoriteBoardIds(Array.isArray(storedFavorites) ? storedFavorites : []);
+      setFavoritesLoadedKey(favoritesStorageKey);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [favoritesStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (favoritesLoadedKey !== favoritesStorageKey) return;
+    window.localStorage.setItem(favoritesStorageKey, JSON.stringify(favoriteBoardIds));
+  }, [favoriteBoardIds, favoritesLoadedKey, favoritesStorageKey]);
 
   const loadBoards = async () => {
     try {
@@ -201,6 +227,28 @@ export default function BoardManager() {
       console.error('Failed to copy join code:', error);
     }
   };
+
+  const toggleFavoriteBoard = (boardId: string) => {
+    setAnimatingFavoriteBoardId(boardId);
+    window.setTimeout(() => {
+      setAnimatingFavoriteBoardId((currentBoardId) => currentBoardId === boardId ? null : currentBoardId);
+    }, 650);
+    setFavoriteBoardIds((currentFavorites) =>
+      currentFavorites.includes(boardId)
+        ? currentFavorites.filter((id) => id !== boardId)
+        : [boardId, ...currentFavorites]
+    );
+  };
+
+  const sortedBoards = [...boards].sort((left, right) => {
+    const leftFavorite = favoriteBoardIds.includes(left.id);
+    const rightFavorite = favoriteBoardIds.includes(right.id);
+
+    if (leftFavorite === rightFavorite) return 0;
+    return leftFavorite ? -1 : 1;
+  });
+  const favoriteBoards = sortedBoards.filter((board) => favoriteBoardIds.includes(board.id));
+  const nonFavoriteBoards = sortedBoards.filter((board) => !favoriteBoardIds.includes(board.id));
 
   if (!isLoaded) {
     return (
@@ -455,7 +503,9 @@ export default function BoardManager() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <h2 className="text-xl font-semibold text-[var(--foreground)] mb-6">Your Boards</h2>
+          <h2 className="text-xl font-semibold text-[var(--foreground)] mb-6">
+            {favoriteBoards.length > 0 ? 'Boards' : 'Your Boards'}
+          </h2>
           
           {boards.length === 0 ? (
             <div className="text-center py-16 rounded-2xl bg-[var(--panel)] border border-[var(--border)]">
@@ -464,78 +514,252 @@ export default function BoardManager() {
               <p className="text-[var(--muted)]">Create a new board or join one with a code</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <AnimatePresence mode="popLayout">
-                {boards.map((board, index) => (
-                  <motion.div
-                    key={board.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <motion.div
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      className="relative rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
-                    >
-                      <Link
-                        href={`/board/${board.slug}`}
-                        aria-label={`Open ${board.name}`}
-                        className="absolute inset-0 z-0 rounded-xl"
-                      />
-
-                      <div className="relative z-10 pointer-events-none">
-                        <div className="flex justify-between items-start mb-3">
-                          <BoardIcon
-                            emoji={board.emoji}
-                            websiteUrl={board.websiteUrl}
-                            className="text-2xl"
-                            imageClassName="w-8 h-8 rounded-md"
-                          />
-                          <div className="flex gap-1">
-                            {board.passkeyRequired && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
-                                🔑 Passkey
-                              </span>
-                            )}
-                            {board.isPublic && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700">
-                                🌐 Public
-                              </span>
-                            )}
-                            {board.hasPassword && (
-                              <span className="text-xs px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)]">
-                                🔒 Protected
-                              </span>
-                            )}
-                            {board.isOwner && (
-                              <span className="text-xs px-2 py-1 rounded-full profile-accent-tag">
-                                👑 Owner
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">{board.name}</h3>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyJoinCode(board.id, board.joinCode)}
-                          className="code-censor-trigger group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
-                          aria-label={`Copy join code ${board.joinCode}`}
-                          title="Copy code"
+            <div className="space-y-10">
+              {favoriteBoards.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Your Favorites</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <AnimatePresence mode="popLayout">
+                      {favoriteBoards.map((board, index) => (
+                        <motion.div
+                          key={board.id}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ delay: index * 0.05 }}
                         >
-                          Code:{' '}
-                          <span className="organic-censor-code ml-1 inline-flex min-w-[7ch] select-none items-center justify-center rounded-md px-1.5 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.035)]">
-                            <span className="code-censor-text">{board.joinCode}</span>
-                          </span>
-                          {copiedBoardId === board.id && (
-                            <span className="ml-2 text-[var(--accent)]">Copied</span>
-                          )}
-                        </button>
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                          <motion.div
+                            whileHover={{ scale: 1.02, y: -2 }}
+                            className="relative rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
+                          >
+                            <Link
+                              href={`/board/${board.slug}`}
+                              aria-label={`Open ${board.name}`}
+                              className="absolute inset-0 z-0 rounded-xl"
+                            />
+
+                            <div className="relative z-10 pointer-events-none">
+                              <div className="flex justify-between items-start mb-3">
+                                <BoardIcon
+                                  emoji={board.emoji}
+                                  websiteUrl={board.websiteUrl}
+                                  className="text-2xl"
+                                  imageClassName="w-8 h-8 rounded-md"
+                                />
+                                <div className="flex items-start gap-1">
+                                  {board.passkeyRequired && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                      🔑 Passkey
+                                    </span>
+                                  )}
+                                  {board.isPublic && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700">
+                                      🌐 Public
+                                    </span>
+                                  )}
+                                  {board.hasPassword && (
+                                    <span className="text-xs px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)]">
+                                      🔒 Protected
+                                    </span>
+                                  )}
+                                  {board.isOwner && (
+                                    <span className="text-xs px-2 py-1 rounded-full profile-accent-tag">
+                                      👑 Owner
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">{board.name}</h3>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyJoinCode(board.id, board.joinCode)}
+                                className="code-censor-trigger group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
+                                aria-label={`Copy join code ${board.joinCode}`}
+                                title="Copy code"
+                              >
+                                Code:{' '}
+                                <span className="organic-censor-code ml-1 inline-flex min-w-[7ch] select-none items-center justify-center rounded-md px-1.5 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.035)]">
+                                  <span className="code-censor-text">{board.joinCode}</span>
+                                </span>
+                                {copiedBoardId === board.id && (
+                                  <span className="ml-2 text-[var(--accent)]">Copied</span>
+                                )}
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleFavoriteBoard(board.id)}
+                              className="absolute bottom-4 right-4 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-amber-300/80 bg-amber-100/95 text-amber-600 shadow-[0_8px_18px_rgba(245,158,11,0.2)] transition-all"
+                              aria-label={`Unfavorite ${board.name}`}
+                              title="Unfavorite board"
+                            >
+                              <motion.span
+                                animate={animatingFavoriteBoardId === board.id ? {
+                                  scale: [1, 0.82, 1.22, 1],
+                                  rotate: [0, -10, 10, 0],
+                                  y: [0, -2, 0]
+                                } : {
+                                  scale: 1,
+                                  rotate: 0,
+                                  y: 0
+                                }}
+                                transition={{ duration: 0.55, ease: 'easeOut' }}
+                                className="relative inline-flex items-center justify-center text-base leading-none"
+                              >
+                                <span className="relative z-10">⭐</span>
+                                {animatingFavoriteBoardId === board.id && (
+                                  <>
+                                    <motion.span
+                                      initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
+                                      animate={{ opacity: [0, 1, 0], scale: [0.4, 1, 0.7], x: -14, y: -10 }}
+                                      transition={{ duration: 0.55, ease: 'easeOut' }}
+                                      className="pointer-events-none absolute text-xs"
+                                    >
+                                      ✨
+                                    </motion.span>
+                                    <motion.span
+                                      initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
+                                      animate={{ opacity: [0, 1, 0], scale: [0.4, 1, 0.7], x: 14, y: -8 }}
+                                      transition={{ duration: 0.55, ease: 'easeOut', delay: 0.04 }}
+                                      className="pointer-events-none absolute text-xs"
+                                    >
+                                      ✦
+                                    </motion.span>
+                                  </>
+                                )}
+                              </motion.span>
+                            </button>
+                          </motion.div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {nonFavoriteBoards.length > 0 && (
+                <div>
+                  {favoriteBoards.length > 0 && (
+                    <h3 className="text-lg font-semibold text-[var(--foreground)] mb-4">Your Boards</h3>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <AnimatePresence mode="popLayout">
+                      {nonFavoriteBoards.map((board, index) => (
+                        <motion.div
+                          key={board.id}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          transition={{ delay: index * 0.05 }}
+                        >
+                          <motion.div
+                            whileHover={{ scale: 1.02, y: -2 }}
+                            className="relative rounded-xl bg-[var(--panel)] border border-[var(--border)] p-5 shadow-[0_10px_30px_rgba(17,17,17,0.05)] hover:shadow-[0_14px_40px_rgba(17,17,17,0.08)] transition-shadow"
+                          >
+                            <Link
+                              href={`/board/${board.slug}`}
+                              aria-label={`Open ${board.name}`}
+                              className="absolute inset-0 z-0 rounded-xl"
+                            />
+
+                            <div className="relative z-10 pointer-events-none">
+                              <div className="flex justify-between items-start mb-3">
+                                <BoardIcon
+                                  emoji={board.emoji}
+                                  websiteUrl={board.websiteUrl}
+                                  className="text-2xl"
+                                  imageClassName="w-8 h-8 rounded-md"
+                                />
+                                <div className="flex items-start gap-1">
+                                  {board.passkeyRequired && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+                                      🔑 Passkey
+                                    </span>
+                                  )}
+                                  {board.isPublic && (
+                                    <span className="text-xs px-2 py-1 rounded-full bg-sky-100 text-sky-700">
+                                      🌐 Public
+                                    </span>
+                                  )}
+                                  {board.hasPassword && (
+                                    <span className="text-xs px-2 py-1 rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)]">
+                                      🔒 Protected
+                                    </span>
+                                  )}
+                                  {board.isOwner && (
+                                    <span className="text-xs px-2 py-1 rounded-full profile-accent-tag">
+                                      👑 Owner
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">{board.name}</h3>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyJoinCode(board.id, board.joinCode)}
+                                className="code-censor-trigger group/code pointer-events-auto inline-flex text-sm text-[var(--muted)] font-mono text-left focus:outline-none"
+                                aria-label={`Copy join code ${board.joinCode}`}
+                                title="Copy code"
+                              >
+                                Code:{' '}
+                                <span className="organic-censor-code ml-1 inline-flex min-w-[7ch] select-none items-center justify-center rounded-md px-1.5 text-center shadow-[0_0_0_1px_rgba(255,255,255,0.035)]">
+                                  <span className="code-censor-text">{board.joinCode}</span>
+                                </span>
+                                {copiedBoardId === board.id && (
+                                  <span className="ml-2 text-[var(--accent)]">Copied</span>
+                                )}
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => toggleFavoriteBoard(board.id)}
+                              className="absolute bottom-4 right-4 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--panel-strong)] text-[var(--muted)] shadow-[0_8px_18px_rgba(17,17,17,0.12)] transition-all hover:text-amber-500"
+                              aria-label={`Favorite ${board.name}`}
+                              title="Favorite board"
+                            >
+                              <motion.span
+                                animate={animatingFavoriteBoardId === board.id ? {
+                                  scale: [1, 0.82, 1.22, 1],
+                                  rotate: [0, -10, 10, 0],
+                                  y: [0, -2, 0]
+                                } : {
+                                  scale: 1,
+                                  rotate: 0,
+                                  y: 0
+                                }}
+                                transition={{ duration: 0.55, ease: 'easeOut' }}
+                                className="relative inline-flex items-center justify-center text-base leading-none"
+                              >
+                                <span className="relative z-10">☆</span>
+                                {animatingFavoriteBoardId === board.id && (
+                                  <>
+                                    <motion.span
+                                      initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
+                                      animate={{ opacity: [0, 1, 0], scale: [0.4, 1, 0.7], x: -14, y: -10 }}
+                                      transition={{ duration: 0.55, ease: 'easeOut' }}
+                                      className="pointer-events-none absolute text-xs"
+                                    >
+                                      ✨
+                                    </motion.span>
+                                    <motion.span
+                                      initial={{ opacity: 0, scale: 0.4, x: 0, y: 0 }}
+                                      animate={{ opacity: [0, 1, 0], scale: [0.4, 1, 0.7], x: 14, y: -8 }}
+                                      transition={{ duration: 0.55, ease: 'easeOut', delay: 0.04 }}
+                                      className="pointer-events-none absolute text-xs"
+                                    >
+                                      ✦
+                                    </motion.span>
+                                  </>
+                                )}
+                              </motion.span>
+                            </button>
+                          </motion.div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </motion.div>

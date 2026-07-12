@@ -5,7 +5,7 @@
 #
 # The Next.js server must bind to 127.0.0.1:4000 (see below).
 # Caddy terminates TLS and forwards X-Forwarded-* headers, which Strider's
-# rate limiter (proxy.ts) and secure session cookies rely on.
+# rate limiter (middleware.ts) and secure session cookies rely on.
 
 # ---- Public, internet-facing site ----
 boards.devonlabs.space {

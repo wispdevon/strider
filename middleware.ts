@@ -74,7 +74,7 @@ function rateLimit(key: string, limit: { windowMs: number; max: number }): boole
   return true;
 }
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/api/") && isMutation(request.method) && !hasTrustedOrigin(request)) {
     return new NextResponse(

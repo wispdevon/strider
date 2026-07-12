@@ -27,7 +27,7 @@ and the steps required before going live.
    `Content-Security-Policy` (with `frame-ancestors 'none'`), and disables the
    `x-powered-by` header.
 
-5. **Rate limiting.** `proxy.ts` applies per-IP token-bucket limits to API auth,
+5. **Rate limiting.** `middleware.ts` applies per-IP token-bucket limits to API auth,
    board, project, friend, invite, and avatar routes to blunt brute-force and
    scraping.
 
@@ -70,7 +70,7 @@ A `Caddyfile` is provided. It:
 - Serves the same app on your **local network** at `boards.lan` using Caddy's
   built-in CA (`tls internal`) so LAN access is also HTTPS.
 - Forwards `X-Forwarded-For` / `X-Forwarded-Proto` / `X-Real-IP`, which Strider's
-  rate limiter (`proxy.ts`) and secure session cookies depend on.
+  rate limiter (`middleware.ts`) and secure session cookies depend on.
 
 Run it:
 
@@ -102,9 +102,43 @@ passkey logins only work when you visit `https://boards.devonlabs.space` - not
 set `RP_ID=boards.lan` (and re-register passkeys) in a LAN-specific env, or use
 password/board-join on LAN and passkeys only over the public domain.
 
+## Cloudflare Workers / OpenNext
+
+Strider is configured for the supported Cloudflare Next.js adapter:
+
+- `@opennextjs/cloudflare`
+- `wrangler.jsonc`
+- `open-next.config.ts`
+- Node 22+ via `.node-version` and `package.json` engines
+
+Use these commands for Cloudflare CI/CD:
+
+```bash
+npm ci
+npm run deploy:cloudflare
+```
+
+For a local production-like preview:
+
+```bash
+npm run preview:cloudflare
+```
+
+Cloudflare's older `@cloudflare/next-on-pages` package is deprecated and does
+not support this repo's Next.js 16 version range. The current Cloudflare path is
+OpenNext on Workers.
+
+Important: Strider still persists data with native `better-sqlite3`. Cloudflare
+Workers cannot run native SQLite modules or keep a local `data/strider.sqlite`
+database as durable production storage. Before using Cloudflare as the live
+backend, migrate `lib/db-*`, `lib/boards.ts`, `lib/projects.ts`, and related
+session/auth persistence to Cloudflare D1 or another Workers-compatible
+database. Until then, the Node/Caddy deployment remains the production-ready
+target for the current persistence layer.
+
 ## Note on rate limiting
 
-The limiter in `proxy.ts` keeps state in process memory and covers API auth,
+The limiter in `middleware.ts` keeps state in process memory and covers API auth,
 board, project, friend, invite, and avatar routes. It is sufficient for a
 single-instance deployment. If you run multiple instances behind a load balancer,
 enforce rate limits (and WAF rules) at the proxy/CDN layer as well.

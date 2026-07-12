@@ -68,6 +68,9 @@ npm run dev      # Start the Next.js dev server
 npm run build    # Build for production
 npm run start    # Start the production server
 npm run lint     # Run ESLint
+npm run preview:cloudflare  # Build and preview with the Cloudflare Workers runtime
+npm run deploy:cloudflare   # Build and deploy with the Cloudflare OpenNext adapter
+npm run cf-typegen          # Generate Cloudflare environment binding types
 ```
 
 ## Environment
@@ -136,6 +139,12 @@ npm run start
 ```
 
 Use the included [Caddyfile](Caddyfile) if you want Caddy to terminate TLS and proxy to Next.js.
+
+Cloudflare Workers configuration is included through `@opennextjs/cloudflare`,
+`wrangler.jsonc`, and `open-next.config.ts`. Cloudflare CI/CD should use Node 22+
+and `npm run deploy:cloudflare`. The current app still uses native
+`better-sqlite3`; migrate persistence to Cloudflare D1 or another Workers-safe
+database before relying on the Cloudflare deployment for production writes.
 
 ## Design
 

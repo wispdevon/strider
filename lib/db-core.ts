@@ -237,6 +237,21 @@ function initializeDb() {
     );
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS subtask_documents (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      subtask_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('text', 'csv')),
+      title TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      UNIQUE(project_id, subtask_id)
+    );
+  `);
+
   // Add is_public column if it doesn't exist (migration)
   try {
     const columns = db.prepare("PRAGMA table_info(boards)").all() as Array<{ name: string }>;

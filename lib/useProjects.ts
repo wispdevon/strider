@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 
 type UseProjectsOptions = {
   syncIntervalMs?: number;
@@ -13,6 +13,9 @@ export interface Subtask {
   done: boolean;
   assigneeId?: string | null;
   assigneeIds?: string[];
+  documentId?: string | null;
+  documentTitle?: string | null;
+  documentKind?: 'text' | 'csv' | null;
 }
 
 export interface Project {
@@ -44,51 +47,54 @@ export function useProjects(boardId?: string, options: UseProjectsOptions = {}) 
   const { syncIntervalMs = 0, pauseWhenHidden = true } = options;
   const normalizedSyncMs = syncIntervalMs > 0 ? syncIntervalMs : 0;
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadProjects = useCallback(async (cancelledRef?: { current: boolean }) => {
+    if (!boardId) {
+      setProjects([]);
+      setIsLoaded(true);
+      return;
+    }
 
-    const loadProjects = async () => {
-      if (!boardId) {
+    try {
+      const url = `/api/projects?boardId=${encodeURIComponent(boardId)}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to load projects');
+      const data = (await response.json()) as Project[];
+      if (!cancelledRef?.current) {
+        setProjects(data);
+      }
+    } catch {
+      if (!cancelledRef?.current) {
         setProjects([]);
+      }
+    } finally {
+      if (!cancelledRef?.current) {
         setIsLoaded(true);
-        return;
       }
+    }
+  }, [boardId]);
 
-      try {
-        const url = `/api/projects?boardId=${encodeURIComponent(boardId)}`;
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Failed to load projects');
-        const data = (await response.json()) as Project[];
-        if (!cancelled) {
-          setProjects(data);
-        }
-      } catch {
-        if (!cancelled) {
-          setProjects([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoaded(true);
-        }
-      }
-    };
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    const initialLoadId = window.setTimeout(() => {
+      void loadProjects(cancelledRef);
+    }, 0);
 
-    loadProjects();
     if (!boardId || normalizedSyncMs <= 0) {
       return () => {
-        cancelled = true;
+        cancelledRef.current = true;
+        window.clearTimeout(initialLoadId);
       };
     }
 
     let poller: number | null = null;
     const poll = () => {
-      void loadProjects();
+      void loadProjects(cancelledRef);
     };
 
     if (pauseWhenHidden && typeof document !== 'undefined') {
       const onVisibility = () => {
         if (!document.hidden) {
-          void loadProjects();
+          void loadProjects(cancelledRef);
         }
       };
       window.addEventListener('visibilitychange', onVisibility);
@@ -96,7 +102,8 @@ export function useProjects(boardId?: string, options: UseProjectsOptions = {}) 
       poller = window.setInterval(poll, normalizedSyncMs);
 
       return () => {
-        cancelled = true;
+        cancelledRef.current = true;
+        window.clearTimeout(initialLoadId);
         if (poller) {
           window.clearInterval(poller);
         }
@@ -108,12 +115,13 @@ export function useProjects(boardId?: string, options: UseProjectsOptions = {}) 
     poller = window.setInterval(poll, normalizedSyncMs);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
+      window.clearTimeout(initialLoadId);
       if (poller) {
         window.clearInterval(poller);
       }
     };
-  }, [boardId, normalizedSyncMs, pauseWhenHidden]);
+  }, [boardId, loadProjects, normalizedSyncMs, pauseWhenHidden]);
 
   const addProject = async (title: string, note: string, stage: Project['stage'], subtasks: string[], category: string, boardId?: string) => {
     const response = await fetch('/api/projects', {
@@ -207,6 +215,7 @@ export function useProjects(boardId?: string, options: UseProjectsOptions = {}) 
     assignSubtask,
     deleteProject,
     addSubtask,
+    refreshProjects: () => loadProjects(),
     getProjectBySlug,
     getProjectProgress
   };

@@ -23,6 +23,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Project, Subtask, useProjects, BoardMemberInfo } from '@/lib/useProjects';
 import { useEffect, useRef, useState } from 'react';
+import Papa from 'papaparse';
 import AssigneeSelector from './AssigneeSelector';
 import FriendsList from './FriendsList';
 import UserMenu from './UserMenu';
@@ -43,6 +44,7 @@ interface SortableSubtaskProps {
   onToggle: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  onOpenDocument: () => void;
   members?: BoardMemberInfo[];
   onAssign?: (userIds: string[]) => void;
 }
@@ -51,6 +53,19 @@ interface ProjectBoardInfo {
   id: string;
   name: string;
   slug: string;
+}
+
+type HostedDocumentKind = 'text' | 'csv';
+
+interface HostedDocument {
+  id: string;
+  projectId: string;
+  subtaskId: string;
+  kind: HostedDocumentKind;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function getNextStage(stage: Project['stage']): Project['stage'] {
@@ -77,7 +92,7 @@ function getStageLabel(stage: Project['stage']) {
   return STAGES[getStageBarIndex(stage)].label;
 }
 
-function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAssign }: SortableSubtaskProps) {
+function SortableSubtask({ subtask, onToggle, onRename, onDelete, onOpenDocument, members, onAssign }: SortableSubtaskProps) {
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(subtask.title);
   const {
@@ -113,7 +128,7 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
     <div
       ref={setNodeRef}
       style={style}
-      className={`grid min-w-[40rem] grid-cols-[auto_auto_minmax(18rem,1fr)_auto_auto] items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border transition-all duration-300 ${
+      className={`grid min-w-[42rem] grid-cols-[auto_auto_minmax(18rem,1fr)_auto_auto_auto] items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-lg border transition-all duration-300 ${
         subtask.done
           ? 'bg-[var(--accent-soft)] border-[var(--accent-sheen)] text-[var(--foreground)]'
           : 'bg-[var(--panel)] border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--panel-strong)]'
@@ -191,6 +206,19 @@ function SortableSubtask({ subtask, onToggle, onRename, onDelete, members, onAss
       {(!members || members.length === 0 || !onAssign) && <span />}
       <button
         type="button"
+        onClick={onOpenDocument}
+        className={`w-8 h-8 inline-flex items-center justify-center rounded-lg transition-colors ${
+          subtask.documentId
+            ? 'text-[var(--accent)] bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)]/80'
+            : 'text-[var(--muted)] hover:bg-[var(--panel-strong)] hover:text-[var(--foreground)]'
+        }`}
+        aria-label={subtask.documentId ? `Open ${subtask.documentTitle || 'subtask document'}` : 'Add subtask document'}
+        title={subtask.documentId ? subtask.documentTitle || 'Open document' : 'Add document'}
+      >
+        {subtask.documentKind === 'csv' ? '▦' : subtask.documentId ? '◫' : '＋'}
+      </button>
+      <button
+        type="button"
         onClick={onDelete}
         className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
         aria-label="Delete subtask"
@@ -212,7 +240,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const boardId = searchParams.get('boardId') || undefined;
-  const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, getProjectProgress } = useProjects(
+  const { isLoaded, getProjectBySlug, toggleSubtask, updateProject, deleteProject, addSubtask, assignSubtask, refreshProjects, getProjectProgress } = useProjects(
     boardId,
     {
       syncIntervalMs: 1200,
@@ -230,7 +258,16 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const [undoSubtaskDeletion, setUndoSubtaskDeletion] = useState<UndoSubtaskState | null>(null);
   const [editingField, setEditingField] = useState<'title' | 'category' | null>(null);
   const [headerDraft, setHeaderDraft] = useState('');
+  const [documentSubtask, setDocumentSubtask] = useState<Subtask | null>(null);
+  const [hostedDocument, setHostedDocument] = useState<HostedDocument | null>(null);
+  const [documentTitle, setDocumentTitle] = useState('');
+  const [documentDraft, setDocumentDraft] = useState('');
+  const [documentKind, setDocumentKind] = useState<HostedDocumentKind>('text');
+  const [documentLoading, setDocumentLoading] = useState(false);
+  const [documentSaving, setDocumentSaving] = useState(false);
+  const [documentError, setDocumentError] = useState('');
   const undoSubtaskTimerRef = useRef<number | null>(null);
+  const documentFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearUndoSubtaskTimer = () => {
     if (undoSubtaskTimerRef.current) {
@@ -414,6 +451,140 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
     }, 6000);
   };
 
+  const documentEndpoint = documentSubtask
+    ? `/api/projects/${project.id}/subtasks/${documentSubtask.id}/document`
+    : '';
+
+  const openSubtaskDocument = async (subtask: Subtask) => {
+    setDocumentSubtask(subtask);
+    setHostedDocument(null);
+    setDocumentTitle(subtask.documentTitle || `${subtask.title}.txt`);
+    setDocumentKind(subtask.documentKind || 'text');
+    setDocumentDraft('');
+    setDocumentError('');
+    setDocumentLoading(true);
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/subtasks/${subtask.id}/document`);
+      if (!response.ok) throw new Error('Failed to load document');
+      const data = (await response.json()) as { document: HostedDocument | null };
+      if (data.document) {
+        setHostedDocument(data.document);
+        setDocumentTitle(data.document.title);
+        setDocumentKind(data.document.kind);
+        setDocumentDraft(data.document.content);
+      }
+    } catch {
+      setDocumentError('Could not load the hosted document.');
+    } finally {
+      setDocumentLoading(false);
+    }
+  };
+
+  const closeSubtaskDocument = () => {
+    setDocumentSubtask(null);
+    setHostedDocument(null);
+    setDocumentError('');
+  };
+
+  const createHostedDocument = async (kind: HostedDocumentKind, title: string, content: string) => {
+    if (!documentSubtask) return;
+
+    setDocumentSaving(true);
+    setDocumentError('');
+    try {
+      const response = await fetch(documentEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, title, content }),
+      });
+      if (!response.ok) throw new Error('Failed to create document');
+      const data = (await response.json()) as { document: HostedDocument };
+      setHostedDocument(data.document);
+      setDocumentTitle(data.document.title);
+      setDocumentKind(data.document.kind);
+      setDocumentDraft(data.document.content);
+      await refreshProjects();
+    } catch {
+      setDocumentError('Could not create the hosted document.');
+    } finally {
+      setDocumentSaving(false);
+    }
+  };
+
+  const saveHostedDocument = async () => {
+    if (!hostedDocument) return;
+
+    setDocumentSaving(true);
+    setDocumentError('');
+    try {
+      const response = await fetch(documentEndpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: documentTitle, content: documentDraft }),
+      });
+      if (!response.ok) throw new Error('Failed to save document');
+      const data = (await response.json()) as { document: HostedDocument };
+      setHostedDocument(data.document);
+      setDocumentTitle(data.document.title);
+      setDocumentDraft(data.document.content);
+      await refreshProjects();
+    } catch {
+      setDocumentError('Could not save the hosted document.');
+    } finally {
+      setDocumentSaving(false);
+    }
+  };
+
+  const deleteHostedDocument = async () => {
+    if (!hostedDocument || !window.confirm('Remove this hosted document from the subtask?')) return;
+
+    setDocumentSaving(true);
+    setDocumentError('');
+    try {
+      const response = await fetch(documentEndpoint, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete document');
+      await refreshProjects();
+      closeSubtaskDocument();
+    } catch {
+      setDocumentError('Could not remove the hosted document.');
+    } finally {
+      setDocumentSaving(false);
+    }
+  };
+
+  const handleDocumentFile = async (file: File) => {
+    const extension = file.name.toLowerCase().split('.').pop();
+    const kind: HostedDocumentKind = extension === 'csv' || file.type.includes('csv') ? 'csv' : 'text';
+    const content = await file.text();
+    await createHostedDocument(kind, file.name, content);
+  };
+
+  const csvRows = documentKind === 'csv'
+    ? ((Papa.parse<string[]>(documentDraft || '', { skipEmptyLines: false }).data as string[][]).filter((row) => row.length > 1 || row[0] !== ''))
+    : [];
+  const editableCsvRows = csvRows.length > 0 ? csvRows : [['']];
+  const csvColumnCount = Math.max(1, ...editableCsvRows.map((row) => row.length));
+
+  const updateCsvCell = (rowIndex: number, columnIndex: number, value: string) => {
+    const rows = editableCsvRows.map((row) => [...row]);
+    rows[rowIndex] = rows[rowIndex] || [];
+    while (rows[rowIndex].length < csvColumnCount) rows[rowIndex].push('');
+    rows[rowIndex][columnIndex] = value;
+    setDocumentDraft(Papa.unparse(rows));
+  };
+
+  const addCsvRow = () => {
+    const rows = editableCsvRows.map((row) => [...row]);
+    rows.push(Array.from({ length: csvColumnCount }, () => ''));
+    setDocumentDraft(Papa.unparse(rows));
+  };
+
+  const addCsvColumn = () => {
+    const rows = editableCsvRows.map((row) => [...row, '']);
+    setDocumentDraft(Papa.unparse(rows));
+  };
+
   return (
     <div className="min-h-screen bg-transparent">
       {/* Header */}
@@ -588,6 +759,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                         onToggle={() => toggleSubtask(project.id, subtask.id)}
                         onRename={(title) => handleRenameSubtask(subtask.id, title)}
                         onDelete={() => handleDeleteSubtask(subtask.id)}
+                        onOpenDocument={() => openSubtaskDocument(subtask)}
                         members={hasMembers ? members : undefined}
                         onAssign={hasMembers ? (userIds) => assignSubtask(project.id, subtask.id, userIds) : undefined}
                       />
@@ -703,6 +875,165 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
           </motion.div>
         </motion.div>
       </div>
+
+      <AnimatePresence>
+        {documentSubtask && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+            onClick={closeSubtaskDocument}
+          >
+            <motion.div
+              initial={{ y: 18, scale: 0.98, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 18, scale: 0.98, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+              className="flex max-h-[86vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--panel)] shadow-2xl"
+            >
+              <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] px-5 py-4">
+                <div className="min-w-0">
+                  <p className="eyebrow text-[var(--accent)] text-[11px] tracking-[0.24em] font-semibold">
+                    {documentSubtask.title}
+                  </p>
+                  <input
+                    value={documentTitle}
+                    onChange={(event) => setDocumentTitle(event.target.value)}
+                    disabled={!hostedDocument || documentSaving}
+                    className="mt-1 w-full border-0 bg-transparent p-0 text-xl font-semibold text-[var(--foreground)] focus:outline-none disabled:opacity-70"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={closeSubtaskDocument}
+                  className="app-toolbar-button app-toolbar-button-neutral h-9 w-9 px-0"
+                  aria-label="Close document"
+                  title="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto p-5">
+                {documentError && (
+                  <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                    {documentError}
+                  </div>
+                )}
+
+                {documentLoading ? (
+                  <div className="py-16 text-center text-[var(--muted)]">Loading...</div>
+                ) : !hostedDocument ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => createHostedDocument('text', `${documentSubtask.title}.txt`, '')}
+                      disabled={documentSaving}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-5 text-left transition-colors hover:border-[var(--accent-sheen)] disabled:opacity-60"
+                    >
+                      <span className="block text-2xl">◫</span>
+                      <span className="mt-3 block font-semibold text-[var(--foreground)]">Text document</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => createHostedDocument('csv', `${documentSubtask.title}.csv`, '')}
+                      disabled={documentSaving}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-5 text-left transition-colors hover:border-[var(--accent-sheen)] disabled:opacity-60"
+                    >
+                      <span className="block text-2xl">▦</span>
+                      <span className="mt-3 block font-semibold text-[var(--foreground)]">CSV sheet</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => documentFileInputRef.current?.click()}
+                      disabled={documentSaving}
+                      className="rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-5 text-left transition-colors hover:border-[var(--accent-sheen)] disabled:opacity-60"
+                    >
+                      <span className="block text-2xl">↥</span>
+                      <span className="mt-3 block font-semibold text-[var(--foreground)]">Upload file</span>
+                    </button>
+                    <input
+                      ref={documentFileInputRef}
+                      type="file"
+                      accept=".txt,.csv,text/plain,text/csv"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (file) void handleDocumentFile(file);
+                      }}
+                    />
+                  </div>
+                ) : documentKind === 'csv' ? (
+                  <div className="space-y-4">
+                    <div className="overflow-auto rounded-xl border border-[var(--border)]">
+                      <table className="min-w-full border-collapse text-sm">
+                        <tbody>
+                          {editableCsvRows.map((row, rowIndex) => (
+                            <tr key={rowIndex} className="border-b border-[var(--border)] last:border-b-0">
+                              {Array.from({ length: csvColumnCount }).map((_, columnIndex) => (
+                                <td key={columnIndex} className="min-w-36 border-r border-[var(--border)] last:border-r-0">
+                                  <input
+                                    value={row[columnIndex] ?? ''}
+                                    onChange={(event) => updateCsvCell(rowIndex, columnIndex, event.target.value)}
+                                    className="block w-full border-0 bg-transparent px-3 py-2 text-[var(--foreground)] focus:bg-[var(--panel-strong)] focus:outline-none"
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={addCsvRow} className="app-toolbar-button app-toolbar-button-neutral">
+                        + Row
+                      </button>
+                      <button type="button" onClick={addCsvColumn} className="app-toolbar-button app-toolbar-button-neutral">
+                        + Column
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <textarea
+                    value={documentDraft}
+                    onChange={(event) => setDocumentDraft(event.target.value)}
+                    className="min-h-[24rem] w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--panel-strong)] p-4 font-mono text-sm leading-6 text-[var(--foreground)] focus:border-[var(--accent)]/40 focus:outline-none"
+                    spellCheck={false}
+                  />
+                )}
+              </div>
+
+              {hostedDocument && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    Updated {new Date(hostedDocument.updatedAt).toLocaleString()}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={deleteHostedDocument}
+                      disabled={documentSaving}
+                      className="app-toolbar-button app-toolbar-button-danger"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveHostedDocument}
+                      disabled={documentSaving}
+                      className="app-toolbar-button app-toolbar-button-primary"
+                    >
+                      {documentSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

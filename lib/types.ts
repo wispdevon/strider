@@ -8,6 +8,22 @@ export interface Subtask {
   done: boolean;
   assigneeId?: string | null;
   assigneeIds?: string[];
+  documentId?: string | null;
+  documentTitle?: string | null;
+  documentKind?: HostedDocumentKind | null;
+}
+
+export type HostedDocumentKind = 'text' | 'csv';
+
+export interface HostedDocument {
+  id: string;
+  projectId: string;
+  subtaskId: string;
+  kind: HostedDocumentKind;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Project {
@@ -108,6 +124,17 @@ export interface DeletedProjectRow {
   board_id: string;
   project_json: string;
   deleted_at: string;
+}
+
+export interface HostedDocumentRow {
+  id: string;
+  project_id: string;
+  subtask_id: string;
+  kind: HostedDocumentKind;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserRow {

@@ -24,22 +24,36 @@ const codeFont = Geist_Mono({
   display: "swap",
 });
 
+const publicSiteUrl = process.env.SITE_URL || process.env.RP_ORIGIN || "https://boards.devonlabs.space";
+const metadataBase = new URL(publicSiteUrl);
+const socialImage = "/strider-discord-embed.svg";
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.SITE_URL || process.env.RP_ORIGIN || "http://localhost:3000"),
+  metadataBase,
   title: "Strider Flow - Project Flowboard",
   description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
   applicationName: "Strider Flow",
   openGraph: {
     title: "Strider Flow - Work moves forward",
     description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
+    url: metadataBase,
     siteName: "Strider Flow",
     locale: "en_US",
     type: "website",
+    images: [
+      {
+        url: socialImage,
+        width: 1200,
+        height: 630,
+        alt: "Strider Flow project board preview",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Strider Flow - Work moves forward",
     description: "Plan clearly, collaborate closely, and move meaningful work from idea to done.",
+    images: [socialImage],
   },
 };
 

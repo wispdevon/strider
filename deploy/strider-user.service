@@ -1,0 +1,22 @@
+[Unit]
+Description=Strider boards Next.js app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/wisp/Projects/strider
+Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
+Environment=PORT=4000
+Environment=PATH=/home/wisp/.local/share/nvm/v20.20.2/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/wisp/Projects/strider/node_modules/.bin/next start -H 0.0.0.0 -p 4000
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

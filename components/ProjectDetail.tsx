@@ -266,6 +266,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const [documentLoading, setDocumentLoading] = useState(false);
   const [documentSaving, setDocumentSaving] = useState(false);
   const [documentError, setDocumentError] = useState('');
+  const [documentLinkCopied, setDocumentLinkCopied] = useState(false);
   const undoSubtaskTimerRef = useRef<number | null>(null);
   const documentFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -485,6 +486,7 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
     setDocumentSubtask(null);
     setHostedDocument(null);
     setDocumentError('');
+    setDocumentLinkCopied(false);
   };
 
   const createHostedDocument = async (kind: HostedDocumentKind, title: string, content: string) => {
@@ -583,6 +585,20 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
   const addCsvColumn = () => {
     const rows = editableCsvRows.map((row) => [...row, '']);
     setDocumentDraft(Papa.unparse(rows));
+  };
+
+  const copyDocumentLink = async () => {
+    if (!hostedDocument) return;
+
+    const path = `/document/${hostedDocument.id}`;
+    const url = typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString();
+    try {
+      await navigator.clipboard.writeText(url);
+      setDocumentLinkCopied(true);
+      window.setTimeout(() => setDocumentLinkCopied(false), 1400);
+    } catch {
+      setDocumentError('Could not copy the document link.');
+    }
   };
 
   return (
@@ -1011,6 +1027,19 @@ export default function ProjectDetail({ slug }: ProjectDetailProps) {
                     Updated {new Date(hostedDocument.updatedAt).toLocaleString()}
                   </p>
                   <div className="flex gap-2">
+                    <Link
+                      href={`/document/${hostedDocument.id}`}
+                      className="app-toolbar-button app-toolbar-button-neutral"
+                    >
+                      Open
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={copyDocumentLink}
+                      className="app-toolbar-button app-toolbar-button-neutral"
+                    >
+                      {documentLinkCopied ? 'Copied' : 'Copy link'}
+                    </button>
                     <button
                       type="button"
                       onClick={deleteHostedDocument}

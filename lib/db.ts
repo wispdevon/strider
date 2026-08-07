@@ -51,6 +51,13 @@ export function getSubtaskDocument(projectId: string, subtaskId: string): Hosted
   return row ? mapDocumentRow(row) : null;
 }
 
+export function getSubtaskDocumentById(id: string): HostedDocument | null {
+  const db = getCoreDb();
+  const row = db.prepare('SELECT * FROM subtask_documents WHERE id = ?').get(id) as HostedDocumentRow | undefined;
+
+  return row ? mapDocumentRow(row) : null;
+}
+
 export function createSubtaskDocument(input: {
   projectId: string;
   subtaskId: string;
@@ -108,6 +115,32 @@ export function updateSubtaskDocument(
   `).run({
     projectId,
     subtaskId,
+    title,
+    content,
+    updatedAt,
+  });
+
+  return { ...current, title, content, updatedAt };
+}
+
+export function updateSubtaskDocumentById(
+  id: string,
+  updates: { title?: string; content?: string }
+): HostedDocument | null {
+  const current = getSubtaskDocumentById(id);
+  if (!current) return null;
+
+  const title = updates.title?.trim() || current.title;
+  const content = updates.content ?? current.content;
+  const updatedAt = new Date().toISOString();
+  const db = getCoreDb();
+
+  db.prepare(`
+    UPDATE subtask_documents
+    SET title = @title, content = @content, updated_at = @updatedAt
+    WHERE id = @id
+  `).run({
+    id,
     title,
     content,
     updatedAt,

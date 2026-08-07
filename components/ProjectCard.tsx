@@ -160,7 +160,7 @@ export default function ProjectCard({
 
       <div className="flex gap-2 mt-3">
         <Link
-          href={boardId ? `/project/${project.slug}?boardId=${encodeURIComponent(boardId)}` : `/project/${project.slug}`}
+          href={boardId ? `/project/${project.id}?boardId=${encodeURIComponent(boardId)}` : `/project/${project.id}`}
           className="flex-1 text-center px-3 py-2 rounded-lg bg-[var(--panel-strong)] hover:bg-[var(--accent-soft)] text-[var(--foreground)] text-xs font-semibold transition-colors duration-200"
         >
           Open

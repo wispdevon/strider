@@ -271,6 +271,7 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   const [undoProjectDeletion, setUndoProjectDeletion] = useState<UndoProjectDeletion | null>(null);
   const [deletedProjects, setDeletedProjects] = useState<DeletedProjectEntry[]>([]);
   const [recycleBinLoading, setRecycleBinLoading] = useState(false);
+  const [creatingTaskStage, setCreatingTaskStage] = useState<BoardStage | null>(null);
   const undoProjectTimerRef = useRef<number | null>(null);
 
   const clearUndoProjectTimer = () => {
@@ -648,17 +649,24 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
   };
 
   const handleOpenAddProject = async (stage: BoardStage) => {
-    const created = await addProject(
-      'Untitled task',
-      '',
-      stage,
-      [],
-      'General',
-      board.id
-    );
+    if (creatingTaskStage) return;
 
-    if (!created) return;
-    await loadBoard();
+    setCreatingTaskStage(stage);
+    try {
+      const created = await addProject(
+        'Untitled task',
+        '',
+        stage,
+        [],
+        'General',
+        board.id
+      );
+
+      if (!created) return;
+      await loadBoard();
+    } finally {
+      setCreatingTaskStage(null);
+    }
   };
 
   const summary = {
@@ -1527,10 +1535,11 @@ export default function BoardView({ boardSlug }: BoardViewProps) {
                     <button
                       type="button"
                       onClick={() => handleOpenAddProject(stage.key)}
+                      disabled={creatingTaskStage !== null}
                       className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-sm font-semibold text-[var(--muted)] transition-colors hover:border-[var(--accent-sheen)] hover:bg-[var(--panel-strong)] hover:text-[var(--foreground)]"
                     >
                       <span aria-hidden="true">+</span>
-                      <span>Add task</span>
+                      <span>{creatingTaskStage === stage.key ? 'Adding...' : 'Add task'}</span>
                     </button>
                   </div>
                 </motion.div>

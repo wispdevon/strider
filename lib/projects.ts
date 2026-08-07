@@ -120,8 +120,9 @@ function archiveProjectDeletion(project: Project) {
  * Create a project. Internal use for seeding accepts optional pre-done subtasks.
  */
 export function createProject(input: CreateProjectInput, preDoneTitles: string[] = []): Project {
-  const slug = input.slug ?? input.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const id = input.id ?? `project-${Date.now()}`;
+  const baseSlug = input.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'task';
+  const slug = input.slug ?? `${baseSlug}-${id.replace(/^project-/, '')}`;
   const assigneeIds = normalizeAssigneeIds(input.assigneeIds, input.assigneeId);
 
   const subtasks = normalizeSubtasks(

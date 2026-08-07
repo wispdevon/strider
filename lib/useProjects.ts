@@ -198,7 +198,7 @@ export function useProjects(boardId?: string, options: UseProjectsOptions = {}) 
   };
 
   const getProjectBySlug = (slug: string) => {
-    return projects.find((p) => p.slug === slug);
+    return projects.find((p) => p.slug === slug || p.id === slug);
   };
 
   const getProjectProgress = (project: Project): number => {

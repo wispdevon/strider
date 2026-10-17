@@ -2,6 +2,19 @@
 
 Strider is a collaborative Kanban-style project management app built with Next.js, SQLite, passkey authentication, board invites, task assignment, subtasks, and a visual Hall of Fame for completed work.
 
+Try it at [boards.devonlabs.space](https://boards.devonlabs.space).
+
+## Project Preview
+
+[![Strider Flow moves work from Plan to Active to Review](app/opengraph-image.png)](https://boards.devonlabs.space)
+
+<div align="center">
+  <img src="docs/images/collaborative-planning.png" alt="Two coworkers planning a project together" width="49%" />
+  <img src="docs/images/completing-work.png" alt="A person reviewing and completing project tasks" width="49%" />
+</div>
+
+<p align="center"><sub>The two workspace photos are generated editorial imagery; the Strider Flow preview above is a branded product illustration.</sub></p>
+
 ## Features
 
 - Board-based project management with Plan, Active, Review, and completed history flows.

@@ -4,16 +4,17 @@ Strider is a collaborative Kanban-style project management app built with Next.j
 
 Try it at [boards.devonlabs.space](https://boards.devonlabs.space).
 
-## Project Preview
+## Real Usage Screenshots
 
-[![Strider Flow moves work from Plan to Active to Review](app/opengraph-image.png)](https://boards.devonlabs.space)
+<p align="center">
+  <img src="docs/images/live-kanban-board.png" alt="Live Strider Kanban board with Plan, Active, and Review columns" width="100%" />
+</p>
+<p align="center"><sub>Kanban board from the public Strider demo workspace.</sub></p>
 
-<div align="center">
-  <img src="docs/images/collaborative-planning.png" alt="Two coworkers planning a project together" width="49%" />
-  <img src="docs/images/completing-work.png" alt="A person reviewing and completing project tasks" width="49%" />
-</div>
-
-<p align="center"><sub>The two workspace photos are generated editorial imagery; the Strider Flow preview above is a branded product illustration.</sub></p>
+<p align="center">
+  <img src="docs/images/live-project-detail.png" alt="Live Strider project detail with subtask progress and stage controls" width="100%" />
+</p>
+<p align="center"><sub>Project detail view with a subtask and progress tracking.</sub></p>
 
 ## Features
 
